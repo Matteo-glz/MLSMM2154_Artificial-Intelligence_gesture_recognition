@@ -37,14 +37,15 @@ def load_and_preprocess_2D(directory_path):
         # Standardisation locale (par axe)
         group_centered = group_centered / group_centered.std()
         
-        # PCA 2D : projection 3D -> 2D
-        pca = PCA(n_components=2)
+        # PCA : projection 3D
+        pca = PCA(n_components=3)
         coords_2d = pca.fit_transform(group_centered)
         
         # Reconstruction du DataFrame
         return pd.DataFrame({
             'PC1': coords_2d[:, 0],
             'PC2': coords_2d[:, 1],
+            'PC3': coords_2d[:, 2],
             'subject': group['subject'].iloc[0],
             'gesture_type': group['gesture_type'].iloc[0],
             'repetition': group['repetition'].iloc[0],
