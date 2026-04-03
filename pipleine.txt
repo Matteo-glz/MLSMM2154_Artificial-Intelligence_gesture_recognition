@@ -3,11 +3,6 @@ import glob
 import os
 from sklearn.decomposition import PCA
 import numpy as np
-from collections import defaultdict
-# --- TEST ---
-path_domaine1 = "/Users/matteogalizia/Documents/GitHub/MLSMM2154_Artificial-Intelligence_gesture_recognition/GestureData/GestureDataDomain1_Mons/Domain1_csv"
-path_domaine4 = "/Users/matteogalizia/Documents/GitHub/MLSMM2154_Artificial-Intelligence_gesture_recognition/GestureData/GestureDataDomain4_Mons"
-
 
 
 def load_data_domain_1(directory_path):
@@ -19,7 +14,7 @@ def load_data_domain_1(directory_path):
      - "trajectory": numpy array of shape (n_samples, 3) containing the x, y, z coordinates of the gesture trajectory
     '''
     gestures = []
-    files = sorted(glob.glob(os.path.join(directory_path, "*.csv")))                # get all CSV files in the directory
+    files = glob.glob(os.path.join(directory_path, "*.csv"))                # get all CSV files in the directory
 
     for i, file_path in enumerate(files):
         filename = os.path.basename(file_path).replace('.csv', '')
@@ -38,74 +33,54 @@ def load_data_domain_1(directory_path):
             "repetition": int(parts[2]),
             "trajectory": trajectory                                        #numpy array of shape (n_samples, 3)
         })
+    print("Data loaded successfully.")
     return gestures
 
 
 def load_data_domain_4(directory_path):
     '''
-    Load data from TXT files and return a list of gesture dictionaries.
+    Load data from TXT files and return a list of gesture dictionaries. Each dictionary contains:
+     - "gesture_id": unique identifier for the gesture
+     - "subject": subject number (e.g., 1 for "User 1")
+     - "gesture_type": type of gesture (e.g., 1, 2, 3)
+     - "repetition": repetition number (e.g., 1, 2, 3)
+     - "trajectory": numpy array of shape (n_samples, 3)
     '''
-
     gestures = []
-
-    files = sorted(glob.glob(os.path.join(directory_path, "*.txt")))
-
-    # Mapping class_id → nom du geste
-    gesture_map = {
-        1: "Cuboid",
-        2: "Cylinder",
-        3: "Sphere",
-        4: "Rectangular Pipe",
-        5: "Hemisphere",
-        6: "Cylinder Pipe",
-        7: "Pyramid",
-        8: "Tetrahedron",
-        9: "Cone",
-        10: "Toroid"
-    }
-
-    # Compteur pour gérer les répétitions (clé = (subject, gesture_type))
-    repetition_counter = defaultdict(int)
+    files = glob.glob(os.path.join(directory_path, "*.txt"))
 
     for i, file_path in enumerate(files):
-
-        # 🔹 Lecture rapide des 3 premières lignes (sans tout charger)
+        # 1. Extraction des métadonnées manuellement (les 3 premières lignes)
         with open(file_path, 'r') as f:
-            line1 = f.readline()
-            line2 = f.readline()
-            line3 = f.readline()
+            lines = [f.readline().strip() for _ in range(3)]
+            
+            # Extraction des chiffres après le signe '='
+            # Exemple : "Class id = 1" -> split('=') donne ["Class id ", " 1"] -> int("1")
+            gesture_type = int(lines[1].split('=')[1])
+            subject = int(lines[2].split('=')[1])
 
-        gesture_type = int(line2.split('=')[1].strip())
-        subject = int(line3.split('=')[1].strip())
-
-        # 🔹 Calcul de la répétition
-        key = (subject, gesture_type)
-        repetition_counter[key] += 1
-        repetition = repetition_counter[key]
-
-        # 🔹 Lecture optimisée des données numériques
-        df = pd.read_csv(
-            file_path,
-            skiprows=5,
-            header=None,
-            usecols=[0, 1, 2],  # ⚡ ignore directement t → gain de temps
-            names=['x', 'y', 'z']
-        )
-
-        # Nettoyage
+        # 2. Chargement des données numériques avec Pandas
+        # On saute les 5 premières lignes (métadonnées + ligne vide + header <x,y,z,t>)
+        df = pd.read_csv(file_path, skiprows=5, header=None, names=['x', 'y', 'z', 't'])
+        
+        # Nettoyage classique
         df = df.apply(pd.to_numeric, errors='coerce').dropna()
+        trajectory = df[['x', 'y', 'z']].values
 
-        trajectory = df.values  # déjà (n_samples, 3)
-
+        # 3. Construction du dictionnaire
+        # Note : Si la "repetition" n'est pas dans le texte, on peut essayer de 
+        # la tirer du nom du fichier ou mettre une valeur par défaut.
+        filename = os.path.basename(file_path)
+        
         gestures.append({
             "gesture_id": i,
             "subject": subject,
             "gesture_type": gesture_type,
-            "gesture_name": gesture_map.get(gesture_type, "Unknown"),
-            "repetition": repetition,
+            "repetition": i, # Ou extraction spécifique depuis le nom du fichier si nécessaire
             "trajectory": trajectory
         })
 
+    print(f"Domain 2 loaded successfully: {len(gestures)} files.")
     return gestures
 
 def user_independent_cv(gestures):
@@ -122,9 +97,7 @@ def user_independent_cv(gestures):
         
         # 3. 'yield' is a generator that allows us to iterate over the folds without storing them all in memory at once.
         # It returns the training and testing sets along with the ID of the excluded subject for this iteration.
-    
         yield train, test, subject
-    
 
 def user_dependent_cv(gestures):
     # we create a sorted list of unique repetition numbers present in the data
@@ -163,7 +136,7 @@ def apply_normalizer(gestures, mean, std):
         g_copy = g.copy()
         g_copy['trajectory'] = (g['trajectory'] - mean) / std
         normalized.append(g_copy)
-    
+        
     return normalized
 
 def fit_pca(train_gestures, n_components=3):
@@ -188,11 +161,49 @@ def apply_pca(gestures, pca):
         g_copy = g.copy()
         g_copy['trajectory'] = pca.transform(g['trajectory'])
         transformed.append(g_copy)
-    
+        
     return transformed
 
 
+# --- TEST ---
+path_domaine1 = "/Users/matteogalizia/Documents/GitHub/MLSMM2154_Artificial-Intelligence_gesture_recognition/GestureData/GestureDataDomain1_Mons"
+path_domaine4 = "/Users/matteogalizia/Documents/GitHub/MLSMM2154_Artificial-Intelligence_gesture_recognition/GestureData/GestureDataDomain4_Mons"
 
+
+
+def run_user_independent_pipeline(gestures):
+    '''Pipeline for user-independent evaluation. It includes normalization, PCA, and a placeholder 
+    for the model training and evaluation. The results are stored in a list of dictionaries containing 
+    the fold identifier and the accuracy.'''
+    results = []
+
+    for train, test, subject in user_independent_cv(gestures):
+        
+        # --- NORMALISATION ---
+        mean, std = fit_normalizer(train)
+        train = apply_normalizer(train, mean, std)
+        test = apply_normalizer(test, mean, std)
+        
+        # --- PCA ---
+        pca = fit_pca(train)
+        train = apply_pca(train, pca)
+        test = apply_pca(test, pca)
+        
+        # --- MODEL (placeholder) ---
+        accuracy = 0  # à remplacer
+        
+        results.append({
+            "fold": subject,
+            "accuracy": accuracy
+        })
+        
+        print(f"User {subject} done.")
+
+    return results
+
+
+
+def run_user_dependent_pipeline(gestures):
     '''Pipeline for user-dependent evaluation. It includes normalization,
       PCA, and a placeholder for the model training and evaluation. The results are stored in a 
       list of dictionaries containing 
@@ -209,7 +220,6 @@ def apply_pca(gestures, pca):
         train = apply_pca(train, pca)
         test = apply_pca(test, pca)
         
-        '''
         accuracy = 0
         
         results.append({
@@ -218,11 +228,6 @@ def apply_pca(gestures, pca):
         })
         
         print(f"Repetition {rep} done.")
-        '''
 
-    return train,test
-
-
-
-
+    return results
 
