@@ -1,5 +1,7 @@
 from sklearn.cluster import KMeans
 import numpy as np
+from collections import Counter
+from sklearn.metrics import confusion_matrix
 
 def fit_kmeans(train_gestures, n_clusters=10):
     '''
@@ -13,7 +15,6 @@ def fit_kmeans(train_gestures, n_clusters=10):
     # random_state = 42 = for reproducibility
     kmeans.fit(all_points)
 
-    print("Kmeans fitted on training data. Centroids shape:", kmeans.cluster_centers_.shape)
     return kmeans
 
 def apply_symbolic_transformation(gestures, kmeans):
@@ -76,8 +77,6 @@ def compute_edit_distance(seq1, seq2):
                 )
     return matrix[size_x - 1, size_y - 1]
 
-from collections import Counter
-
 def predict_gesture_type_knn(test_gesture, train_gestures, k=3, use_clean=True):
     '''
     Predict the gesture type using kNN on the edit distance between sequences.
@@ -89,7 +88,7 @@ def predict_gesture_type_knn(test_gesture, train_gestures, k=3, use_clean=True):
     
     distances = []
     
-    # 1. Calculer TOUTES les distances avec le set d'entraînement
+    # 1. Computes ALL distances with the strain set
     for train_g in train_gestures:
         dist = compute_edit_distance(target_seq, train_g[column])
         distances.append({
@@ -97,80 +96,83 @@ def predict_gesture_type_knn(test_gesture, train_gestures, k=3, use_clean=True):
             "gesture_type": train_g['gesture_type']
         })
     
-    # 2. Trier par distance croissante et prendre les k premiers
-    # On trie la liste de dictionnaires selon la clé 'dist'
+    # 2. Sort by growing distances and take the k's first
+    # sort dictionnary list by the the key 'dist'
+
     k_neighbors = sorted(distances, key=lambda x: x['dist'])[:k]
     
-    # 3. Extraire les types de gestes de ces k voisins
+    # 3. Extract gesture types of the k neighbos
+  
     neighbor_types = [n['gesture_type'] for n in k_neighbors]
     
-    # 4. Vote majoritaire
-    # Counter([1, 2, 1]).most_common(1) retourne [(type_majoritaire, nombre_de_votes)]
+    # 4. Take the majority
+    # Vote majoritaire
     prediction = Counter(neighbor_types).most_common(1)[0][0]
     
     return prediction
 
+def compute_class_metrics(y_true, y_pred, labels):
+    '''
+    Compute class-wise evaluation metrics based on the confusion matrix.
 
-from collections import Counter
+    This function evaluates the performance of a classification model 
+    for each class independently using a one-vs-all approach.
 
-def run_user_independent_pipeline(gestures):
+    Parameters:
+    - y_true: array-like, true class labels
+    - y_pred: array-like, predicted class labels
+    - labels: list of all class labels (ensures consistent ordering in the confusion matrix)
 
-    results = []
+    Returns:
+    - class_stats: dictionary mapping each class label to its evaluation metrics:
+        * sensitivity (recall): TP / (TP + FN)
+        * precision: TP / (TP + FP)
+        * npv (negative predictive value): TN / (TN + FN)
 
-    # 1. CROSS VALIDATION (LOSO)
-    for train, test, subject in user_independent_cv(gestures):
+    The confusion matrix is used to derive TP, FP, FN, TN for each class.
+    '''
 
-        print(f"\n--- Testing subject {subject} ---")
+    # Compute confusion matrix:
+    # rows = true labels, columns = predicted labels
+    cm = confusion_matrix(y_true, y_pred, labels=labels)
 
-        # =========================
-        # 2. KMEANS (FIT ONLY TRAIN)
-        # =========================
-        kmeans = fit_kmeans(train, n_clusters=10)
+    # Initialize dictionary to store per-class metrics
+    class_stats = {}
+    
+    # Iterate over each class index and corresponding label
+    for i, label in enumerate(labels):
 
-        # =========================
-        # 3. SYMBOLIC TRANSFORMATION
-        # =========================
-        train_sym = apply_symbolic_transformation(train, kmeans)
-        test_sym  = apply_symbolic_transformation(test, kmeans)
+        # True Positives (TP): correctly predicted samples of class i
+        tp = cm[i, i]
 
-        # =========================
-        # 4. COMPRESSION
-        # =========================
-        train_sym = apply_compression(train_sym)
-        test_sym  = apply_compression(test_sym)
+        # False Positives (FP): samples predicted as class i but belonging to other classes
+        fp = cm[:, i].sum() - tp
 
-        # =========================
-        # 5. PREDICTION (KNN)
-        # =========================
-        correct = 0
+        # False Negatives (FN): samples of class i predicted as another class
+        fn = cm[i, :].sum() - tp
 
-        for test_g in test_sym:
+        # True Negatives (TN): all remaining samples correctly predicted as not class i
+        tn = cm.sum() - (tp + fp + fn)
+        
+        # Sensitivity (Recall): ability to correctly identify class i
+        # Measures how many actual class i samples are correctly detected
+        sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0
+        
+        # Precision: reliability of predictions for class i
+        # Measures how many predicted class i samples are correct
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+        
+        # Negative Predictive Value (NPV): reliability of negative predictions
+        # Measures how many samples predicted as "not class i" are correct
+        npv = tn / (tn + fn) if (tn + fn) > 0 else 0
+        
+        # Store computed metrics for the current class
+        class_stats[label] = {
+            "sensitivity": sensitivity,
+            "precision": precision,
+            "npv": npv
+        }
 
-            pred = predict_gesture_type_knn(
-                test_gesture=test_g,
-                train_gestures=train_sym,
-                k=3,
-                use_clean=True
-            )
-
-            if pred == test_g["gesture_type"]:
-                correct += 1
-
-        accuracy = correct / len(test_sym)
-
-        # =========================
-        # 6. STORE RESULTS
-        # =========================
-        results.append({
-            "subject": subject,
-            "accuracy": accuracy
-        })
-
-        print(f"Subject {subject} accuracy: {accuracy:.4f}")
-
-    return results
-
-
-
-
+    # Return dictionary containing metrics for all classes
+    return class_stats
 

@@ -1,9 +1,6 @@
-import pandas as pd
-import glob
-import os
-from sklearn.decomposition import PCA
-import numpy as np
+gesture recognition Pipeline
 
+1. Data loading
 
 def load_data_domain_1(directory_path):
     '''Load gesture data from CSV files and return a list of gesture dictionaries. Each dictionary contains:
@@ -14,7 +11,7 @@ def load_data_domain_1(directory_path):
      - "trajectory": numpy array of shape (n_samples, 3) containing the x, y, z coordinates of the gesture trajectory
     '''
     gestures = []
-    files = glob.glob(os.path.join(directory_path, "*.csv"))                # get all CSV files in the directory
+    files = sorted(glob.glob(os.path.join(directory_path, "*.csv")))                # get all CSV files in the directory
 
     for i, file_path in enumerate(files):
         filename = os.path.basename(file_path).replace('.csv', '')
@@ -33,55 +30,77 @@ def load_data_domain_1(directory_path):
             "repetition": int(parts[2]),
             "trajectory": trajectory                                        #numpy array of shape (n_samples, 3)
         })
-    print("Data loaded successfully.")
     return gestures
 
 
 def load_data_domain_4(directory_path):
     '''
-    Load data from TXT files and return a list of gesture dictionaries. Each dictionary contains:
-     - "gesture_id": unique identifier for the gesture
-     - "subject": subject number (e.g., 1 for "User 1")
-     - "gesture_type": type of gesture (e.g., 1, 2, 3)
-     - "repetition": repetition number (e.g., 1, 2, 3)
-     - "trajectory": numpy array of shape (n_samples, 3)
+    Load data from TXT files and return a list of gesture dictionaries.
     '''
+
     gestures = []
-    files = glob.glob(os.path.join(directory_path, "*.txt"))
+
+    files = sorted(glob.glob(os.path.join(directory_path, "*.txt")))
+
+    # Mapping class_id → nom du geste
+    gesture_map = {
+        1: "Cuboid",
+        2: "Cylinder",
+        3: "Sphere",
+        4: "Rectangular Pipe",
+        5: "Hemisphere",
+        6: "Cylinder Pipe",
+        7: "Pyramid",
+        8: "Tetrahedron",
+        9: "Cone",
+        10: "Toroid"
+    }
+
+    # Compteur pour gérer les répétitions (clé = (subject, gesture_type))
+    repetition_counter = defaultdict(int)
 
     for i, file_path in enumerate(files):
-        # 1. Extraction des métadonnées manuellement (les 3 premières lignes)
+
+        # 🔹 Lecture rapide des 3 premières lignes (sans tout charger)
         with open(file_path, 'r') as f:
-            lines = [f.readline().strip() for _ in range(3)]
-            
-            # Extraction des chiffres après le signe '='
-            # Exemple : "Class id = 1" -> split('=') donne ["Class id ", " 1"] -> int("1")
-            gesture_type = int(lines[1].split('=')[1])
-            subject = int(lines[2].split('=')[1])
+            line1 = f.readline()
+            line2 = f.readline()
+            line3 = f.readline()
 
-        # 2. Chargement des données numériques avec Pandas
-        # On saute les 5 premières lignes (métadonnées + ligne vide + header <x,y,z,t>)
-        df = pd.read_csv(file_path, skiprows=5, header=None, names=['x', 'y', 'z', 't'])
-        
-        # Nettoyage classique
+        gesture_type = int(line2.split('=')[1].strip())
+        subject = int(line3.split('=')[1].strip())
+
+        # 🔹 Calcul de la répétition
+        key = (subject, gesture_type)
+        repetition_counter[key] += 1
+        repetition = repetition_counter[key]
+
+        # 🔹 Lecture optimisée des données numériques
+        df = pd.read_csv(
+            file_path,
+            skiprows=5,
+            header=None,
+            usecols=[0, 1, 2],  # ⚡ ignore directement t → gain de temps
+            names=['x', 'y', 'z']
+        )
+
+        # Nettoyage
         df = df.apply(pd.to_numeric, errors='coerce').dropna()
-        trajectory = df[['x', 'y', 'z']].values
 
-        # 3. Construction du dictionnaire
-        # Note : Si la "repetition" n'est pas dans le texte, on peut essayer de 
-        # la tirer du nom du fichier ou mettre une valeur par défaut.
-        filename = os.path.basename(file_path)
-        
+        trajectory = df.values  # déjà (n_samples, 3)
+
         gestures.append({
             "gesture_id": i,
             "subject": subject,
             "gesture_type": gesture_type,
-            "repetition": i, # Ou extraction spécifique depuis le nom du fichier si nécessaire
+            "gesture_name": gesture_map.get(gesture_type, "Unknown"),
+            "repetition": repetition,
             "trajectory": trajectory
         })
 
-    print(f"Domain 2 loaded successfully: {len(gestures)} files.")
     return gestures
+
+2. Data splitting
 
 def user_independent_cv(gestures):
     # we create a sorted list of unique subject IDs present in the data
@@ -97,24 +116,42 @@ def user_independent_cv(gestures):
         
         # 3. 'yield' is a generator that allows us to iterate over the folds without storing them all in memory at once.
         # It returns the training and testing sets along with the ID of the excluded subject for this iteration.
+    
         yield train, test, subject
+    
 
 def user_dependent_cv(gestures):
-    # we create a sorted list of unique repetition numbers present in the data
-    repetitions = sorted(set(g["repetition"] for g in gestures))
-    
-    # 2. We operate on each repetition, the actual repetition will be the one set aside for testing
-    for rep in repetitions:
-        # Train : we take all gestures that do not belong to the current repetition
-        train = [g for g in gestures if g["repetition"] != rep]
-        
-        # Test : we test on the excluded repetition for all users (e.g., rep 1)
-        test = [g for g in gestures if g["repetition"] == rep]
-        
-        # Return the training and testing sets along with the ID of the excluded repetition
-        yield train, test, rep
+    """
+    Strict interpretation:
+    For each fold, for each (user, gesture_type), remove ONE sample.
+    """
+
+    # regrouper par (user, gesture_type)
+    groups = defaultdict(list)
+    for g in gestures:
+        key = (g["subject"], g["gesture_type"])
+        groups[key].append(g)
+
+    # nombre de folds = nombre max de répétitions
+    max_rep = max(len(v) for v in groups.values())
+
+    for fold in range(max_rep):
+        train = []
+        test = []
+
+        for key, samples in groups.items():
+            if fold < len(samples):
+                test.append(samples[fold])
+                train.extend(samples[:fold] + samples[fold+1:])
+            else:
+                train.extend(samples)
+
+        yield train, test, fold
 
 
+3. Data Transforming
+
+3.1. Normalization
 def fit_normalizer(train_gestures):
     '''
     Tool used to compute the mean and std of the training set for normalization
@@ -136,9 +173,10 @@ def apply_normalizer(gestures, mean, std):
         g_copy = g.copy()
         g_copy['trajectory'] = (g['trajectory'] - mean) / std
         normalized.append(g_copy)
-        
+    
     return normalized
 
+3.2 PCA
 def fit_pca(train_gestures, n_components=3):
     '''
     Tool used to fit a PCA on the training set, it will be used to t
@@ -161,73 +199,301 @@ def apply_pca(gestures, pca):
         g_copy = g.copy()
         g_copy['trajectory'] = pca.transform(g['trajectory'])
         transformed.append(g_copy)
-        
+    
     return transformed
 
+4. Clustering 
 
-# --- TEST ---
-path_domaine1 = "/Users/matteogalizia/Documents/GitHub/MLSMM2154_Artificial-Intelligence_gesture_recognition/GestureData/GestureDataDomain1_Mons"
-path_domaine4 = "/Users/matteogalizia/Documents/GitHub/MLSMM2154_Artificial-Intelligence_gesture_recognition/GestureData/GestureDataDomain4_Mons"
+def fit_kmeans(train_gestures, n_clusters=10):
+    '''
+    Learn the centroïds (the alphabet) only on the training set.
+    '''
+    # On regroupe tous les points de tous les gestes du train
+    all_points = np.vstack([g['trajectory'] for g in train_gestures])
+    
+    kmeans = KMeans(n_clusters=n_clusters, n_init=10, random_state=42)
+    # n_init = 10 = run 10 times KMeans with different centroid seeds and take the best one (in terms of inertia)
+    # random_state = 42 = for reproducibility
+    kmeans.fit(all_points)
 
+    print("Kmeans fitted on training data. Centroids shape:", kmeans.cluster_centers_.shape)
+    return kmeans
 
-
-def run_user_independent_pipeline(gestures):
-    '''Pipeline for user-independent evaluation. It includes normalization, PCA, and a placeholder 
-    for the model training and evaluation. The results are stored in a list of dictionaries containing 
-    the fold identifier and the accuracy.'''
-    results = []
-
-    for train, test, subject in user_independent_cv(gestures):
+def apply_symbolic_transformation(gestures, kmeans):
+    '''
+    Trajectory transformation: from raw trajectories to "raw sequences" (ex: "AAAAABBBCCCC").
+    '''
+    raw_gestures = []
+    for g in gestures:
+        g_copy = g.copy()
         
-        # --- NORMALISATION ---
-        mean, std = fit_normalizer(train)
-        train = apply_normalizer(train, mean, std)
-        test = apply_normalizer(test, mean, std)
+        # Clusters prediction for each point
+        clusters = kmeans.predict(g['trajectory'])
         
-        # --- PCA ---
-        pca = fit_pca(train)
-        train = apply_pca(train, pca)
-        test = apply_pca(test, pca)
+        # Characters transformation: 0->A, 1->B, ...
+        g_copy['seq_raw'] = "".join([chr(65 + c) for c in clusters])
         
-        # --- MODEL (placeholder) ---
-        accuracy = 0  # à remplacer
+        raw_gestures.append(g_copy)
+    return raw_gestures
+
+def apply_compression(gestures):
+    '''
+    Compress the raw sequences by removing consecutive duplicate characters.
+    '''
+    compressed_gestures = []
+    for g in gestures:
+        g_copy = g.copy()
+        raw = g['seq_raw']
         
-        results.append({
-            "fold": subject,
-            "accuracy": accuracy
+        if not raw:
+            g_copy['seq_clean'] = ""
+        else:
+            # Keep only the character if it's different from the previous one
+            clean = [raw[0]]
+            for char in raw[1:]:
+                if char != clean[-1]:
+                    clean.append(char)
+            g_copy['seq_clean'] = "".join(clean)
+            
+        compressed_gestures.append(g_copy)
+    return compressed_gestures
+
+5. Testing
+
+def compute_edit_distance(seq1, seq2):
+    ''' Compute the edit-distance (Levenshtein distance) between two sequences.'''
+    size_x = len(seq1) + 1
+    size_y = len(seq2) + 1
+    matrix = np.zeros((size_x, size_y))
+    
+    for x in range(size_x): matrix[x, 0] = x
+    for y in range(size_y): matrix[0, y] = y
+
+    for x in range(1, size_x):
+        for y in range(1, size_y):
+            if seq1[x-1] == seq2[y-1]:
+                matrix[x,y] = matrix[x-1, y-1]
+            else:
+                matrix[x,y] = min(
+                    matrix[x-1, y] + 1,    # Deletion
+                    matrix[x, y-1] + 1,    # Insertion
+                    matrix[x-1, y-1] + 1   # Substitution
+                )
+    return matrix[size_x - 1, size_y - 1]
+
+def predict_gesture_type_knn(test_gesture, train_gestures, k=3, use_clean=True):
+    '''
+    Predict the gesture type using kNN on the edit distance between sequences.
+     - use_clean=True → on utilise les séquences compressées (ABC)
+     - use_clean=False → on utilise les séquences brutes (AAA)
+    '''
+    column = 'seq_clean' if use_clean else 'seq_raw'
+    target_seq = test_gesture[column]
+    
+    distances = []
+    
+    # 1. Calculer TOUTES les distances avec le set d'entraînement
+    for train_g in train_gestures:
+        dist = compute_edit_distance(target_seq, train_g[column])
+        distances.append({
+            "dist": dist,
+            "gesture_type": train_g['gesture_type']
         })
+    
+    # 2. Trier par distance croissante et prendre les k premiers
+    # On trie la liste de dictionnaires selon la clé 'dist'
+    k_neighbors = sorted(distances, key=lambda x: x['dist'])[:k]
+    
+    # 3. Extraire les types de gestes de ces k voisins
+    neighbor_types = [n['gesture_type'] for n in k_neighbors]
+    
+    # 4. Vote majoritaire
+    # Counter([1, 2, 1]).most_common(1) retourne [(type_majoritaire, nombre_de_votes)]
+    prediction = Counter(neighbor_types).most_common(1)[0][0]
+    
+    return prediction
+
+6. Assessing 
+def compute_class_metrics(y_true, y_pred, labels):
+    cm = confusion_matrix(y_true, y_pred, labels=labels)
+    class_stats = {}
+    
+    for i, label in enumerate(labels):
+        tp = cm[i, i]
+        fp = cm[:, i].sum() - tp
+        fn = cm[i, :].sum() - tp
+        tn = cm.sum() - (tp + fp + fn)
         
-        print(f"User {subject} done.")
-
-    return results
-
-
-
-def run_user_dependent_pipeline(gestures):
-    '''Pipeline for user-dependent evaluation. It includes normalization,
-      PCA, and a placeholder for the model training and evaluation. The results are stored in a 
-      list of dictionaries containing 
-    the fold identifier and the accuracy.'''
-    results = []
-
-    for train, test, rep in user_dependent_cv(gestures):
+        # Sensibilité (Rappel) : TP / (TP + FN)
+        sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0
+        # Précision (VPP) : TP / (TP + FP)
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+        # Valeur Prédictive Négative (VPN/NPV) : TN / (TN + FN)
+        npv = tn / (tn + fn) if (tn + fn) > 0 else 0
         
-        mean, std = fit_normalizer(train)
-        train = apply_normalizer(train, mean, std)
-        test = apply_normalizer(test, mean, std)
-        
-        pca = fit_pca(train)
-        train = apply_pca(train, pca)
-        test = apply_pca(test, pca)
-        
-        accuracy = 0
-        
-        results.append({
-            "fold": rep,
-            "accuracy": accuracy
-        })
-        
-        print(f"Repetition {rep} done.")
+        class_stats[label] = {
+            "sensitivity": sensitivity,
+            "precision": precision,
+            "npv": npv
+        }
+    return class_stats
 
-    return results
+7. Main Running
 
+def run_experiment_user_independant(csv_name, gestures, cluster_options, k_options):
+    all_results = []
+    labels = range(0, 10) 
+
+    # BOUCLE 1 : On teste chaque nombre de clusters (Alphabet)
+    for n_clusters in cluster_options:
+        print(f"\n--- Testing n_clusters = {n_clusters} ---")
+        
+        # BOUCLE 2 : On fait la validation croisée (Sujets)
+        for train, test, subject in user_independent_cv(gestures):
+            print(f"Processing Subject {subject}...")
+            
+            # --- Prétraitement (une seule fois par n_clusters et par sujet) ---
+            mean, std = fit_normalizer(train) 
+            train_norm = apply_normalizer(train, mean, std) 
+            test_norm = apply_normalizer(test, mean, std)
+            
+            pca = fit_pca(train_norm) 
+            train_pca = apply_pca(train_norm, pca) 
+            test_pca = apply_pca(test_norm, pca)
+            
+            kmeans = fit_kmeans(train_pca, n_clusters=n_clusters) 
+            train_sym = apply_compression(apply_symbolic_transformation(train_pca, kmeans)) 
+            test_sym = apply_compression(apply_symbolic_transformation(test_pca, kmeans))
+
+            # BOUCLE 3 : On teste chaque valeur de K (Voisins)
+            for k in k_options:
+                y_true = []
+                y_pred = []
+
+                for test_g in test_sym:
+                    pred = predict_gesture_type_knn(test_g, train_sym, k=k) 
+                    y_true.append(test_g["gesture_type"])
+                    y_pred.append(pred)
+
+                # Calcul des métriques
+                stats = compute_class_metrics(y_true, y_pred, labels)
+                
+                # On enregistre les résultats pour chaque geste
+                for gesture_type, m in stats.items():
+                    all_results.append({
+                        "subject_excluded": subject,
+                        "n_clusters": n_clusters,
+                        "k_neighbors": k,
+                        "gesture_type": gesture_type,
+                        "sensitivity": m["sensitivity"],
+                        "precision": m["precision"],
+                        "npv": m["npv"],
+                        "accuracy_fold": np.mean(np.array(y_true) == np.array(y_pred))
+                    })
+
+    # Export final
+    df_final = pd.DataFrame(all_results)
+    df_final.to_csv(csv_name, index=False)
+    return df_final
+
+
+def run_experiment_user_dependant(csv_name, gestures, cluster_options, k_options):
+    all_results = []
+    labels = range(0, 10) 
+
+    # BOUCLE 1 : On teste chaque nombre de clusters (Alphabet)
+    for n_clusters in cluster_options:
+        print(f"\n--- Testing n_clusters = {n_clusters} ---")
+        
+        # BOUCLE 2 : On fait la validation croisée (Sujets)
+        for train, test, repetition in user_dependent_cv(gestures):
+            print(f"Processing Subject {repetition}...")
+            
+            # --- Prétraitement (une seule fois par n_clusters et par sujet) ---
+            mean, std = fit_normalizer(train) 
+            train_norm = apply_normalizer(train, mean, std) 
+            test_norm = apply_normalizer(test, mean, std)
+            
+            pca = fit_pca(train_norm) 
+            train_pca = apply_pca(train_norm, pca) 
+            test_pca = apply_pca(test_norm, pca)
+            
+            kmeans = fit_kmeans(train_pca, n_clusters=n_clusters) 
+            train_sym = apply_compression(apply_symbolic_transformation(train_pca, kmeans)) 
+            test_sym = apply_compression(apply_symbolic_transformation(test_pca, kmeans))
+
+            # BOUCLE 3 : On teste chaque valeur de K (Voisins)
+            for k in k_options:
+                y_true = []
+                y_pred = []
+
+                for test_g in test_sym:
+                    pred = predict_gesture_type_knn(test_g, train_sym, k=k) 
+                    y_true.append(test_g["gesture_type"])
+                    y_pred.append(pred)
+
+                # Calcul des métriques
+                stats = compute_class_metrics(y_true, y_pred, labels)
+                
+                # On enregistre les résultats pour chaque geste
+                for gesture_type, m in stats.items():
+                    all_results.append({
+                        "repetition_excluded": repetition,
+                        "n_clusters": n_clusters,
+                        "k_neighbors": k,
+                        "gesture_type": gesture_type,
+                        "sensitivity": m["sensitivity"],
+                        "precision": m["precision"],
+                        "npv": m["npv"],
+                        "accuracy_fold": np.mean(np.array(y_true) == np.array(y_pred))
+                    })
+
+    # Export final
+    df_final = pd.DataFrame(all_results)
+    df_final.to_csv(csv_name, index=False)
+    return df_final
+
+if __name__ == "__main__":
+    path_domain_1 = "/Users/matteogalizia/Documents/GitHub/MLSMM2154_Artificial-Intelligence_gesture_recognition/GestureData/GestureDataDomain1_Mons/Domain1_csv"
+    path_domain_4 = "/Users/matteogalizia/Documents/GitHub/MLSMM2154_Artificial-Intelligence_gesture_recognition/GestureData/GestureDataDomain4_Mons"
+    print("Chargement des données...")
+
+    # Remets ici ton chargement de données
+    gestures_dom1 = load_data_domain_1(path_domain_1)
+    gestures_dom4 = load_data_domain_4(path_domain_4) 
+
+    #Document's names
+    dom_1_independant = "results_domain_1_user_independant"
+    dom_1_dependant = "results_domain_1_user_dependant"
+    dom_4_independant = "results_domain_4_user_independant"
+    dom_4_dependant = "results_domain_4_user_dependant"
+
+    #parameters 
+    clusters_options = [3,5,7,9,11,13,15,17,19,12]
+    k_options=[1,3,5,7]
+
+    # run the tests
+
+    df_results_dom1_ind = run_experiment_user_independant(dom_1_independant,gestures_dom1,clusters_options,k_options)
+    df_results_dom1_dep = run_experiment_user_dependant(dom_1_independant,gestures_dom1,clusters_options,k_options)
+    df_results_dom4_ind = run_experiment_user_independant(dom_4_independant,gestures_dom4,clusters_options,k_options)
+    df_results_dom4_dep = run_experiment_user_dependant(dom_4_independant,gestures_dom4,clusters_options,k_options)
+
+    print("\n--- Results analysis ---")
+    # On regarde l'accuracy moyenne par config
+    print("\n--- Domain 1, user independant---")
+    summary = df_results_dom1_ind.groupby(['n_clusters', 'k_neighbors'])['accuracy_fold'].mean()
+    print(summary)
+
+    print("\n--- Domain 1, user dependant---")
+    summary = df_results_dom1_dep.groupby(['n_clusters', 'k_neighbors'])['accuracy_fold'].mean()
+    print(summary)
+
+    print("\n--- Domain ,4 user independant---")
+    summary = df_results_dom4_ind.groupby(['n_clusters', 'k_neighbors'])['accuracy_fold'].mean()
+    print(summary)
+
+
+    print("\n--- Domain 4, user dependant---")
+    summary = df_results_dom1_dep.groupby(['n_clusters', 'k_neighbors'])['accuracy_fold'].mean()
+    print(summary)
