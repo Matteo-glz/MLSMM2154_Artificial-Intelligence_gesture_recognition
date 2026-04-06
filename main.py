@@ -193,8 +193,8 @@ if __name__ == "__main__":
     #dom_4_dependant = "results_domain_4_user_dependant"
 
     #parameters 
-    clusters_options = [2]
-    k_options=[1]
+    clusters_options = [3,5,7]
+    k_options=[1,3,5]
 
     # run the tests
 

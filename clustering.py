@@ -1,7 +1,7 @@
 from sklearn.cluster import KMeans
 import numpy as np
 from collections import Counter
-from sklearn.metrics import confusion_matrix
+
 
 def fit_kmeans(train_gestures, n_clusters=10):
     '''
@@ -111,68 +111,5 @@ def predict_gesture_type_knn(test_gesture, train_gestures, k=3, use_clean=True):
     
     return prediction
 
-def compute_class_metrics(y_true, y_pred, labels):
-    '''
-    Compute class-wise evaluation metrics based on the confusion matrix.
 
-    This function evaluates the performance of a classification model 
-    for each class independently using a one-vs-all approach.
-
-    Parameters:
-    - y_true: array-like, true class labels
-    - y_pred: array-like, predicted class labels
-    - labels: list of all class labels (ensures consistent ordering in the confusion matrix)
-
-    Returns:
-    - class_stats: dictionary mapping each class label to its evaluation metrics:
-        * sensitivity (recall): TP / (TP + FN)
-        * precision: TP / (TP + FP)
-        * npv (negative predictive value): TN / (TN + FN)
-
-    The confusion matrix is used to derive TP, FP, FN, TN for each class.
-    '''
-
-    # Compute confusion matrix:
-    # rows = true labels, columns = predicted labels
-    cm = confusion_matrix(y_true, y_pred, labels=labels)
-
-    # Initialize dictionary to store per-class metrics
-    class_stats = {}
-    
-    # Iterate over each class index and corresponding label
-    for i, label in enumerate(labels):
-
-        # True Positives (TP): correctly predicted samples of class i
-        tp = cm[i, i]
-
-        # False Positives (FP): samples predicted as class i but belonging to other classes
-        fp = cm[:, i].sum() - tp
-
-        # False Negatives (FN): samples of class i predicted as another class
-        fn = cm[i, :].sum() - tp
-
-        # True Negatives (TN): all remaining samples correctly predicted as not class i
-        tn = cm.sum() - (tp + fp + fn)
-        
-        # Sensitivity (Recall): ability to correctly identify class i
-        # Measures how many actual class i samples are correctly detected
-        sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0
-        
-        # Precision: reliability of predictions for class i
-        # Measures how many predicted class i samples are correct
-        precision = tp / (tp + fp) if (tp + fp) > 0 else 0
-        
-        # Negative Predictive Value (NPV): reliability of negative predictions
-        # Measures how many samples predicted as "not class i" are correct
-        npv = tn / (tn + fn) if (tn + fn) > 0 else 0
-        
-        # Store computed metrics for the current class
-        class_stats[label] = {
-            "sensitivity": sensitivity,
-            "precision": precision,
-            "npv": npv
-        }
-
-    # Return dictionary containing metrics for all classes
-    return class_stats
 
