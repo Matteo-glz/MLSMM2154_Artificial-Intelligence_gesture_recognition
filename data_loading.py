@@ -49,16 +49,16 @@ def load_data_domain_4(directory_path):
 
     # Mapping class_id = gesture name
     gesture_map = {
-        1: "Cuboid",
-        2: "Cylinder",
-        3: "Sphere",
-        4: "Rectangular Pipe",
-        5: "Hemisphere",
-        6: "Cylinder Pipe",
-        7: "Pyramid",
-        8: "Tetrahedron",
-        9: "Cone",
-        10: "Toroid"
+        0: "Cuboid",
+        1: "Cylinder",
+        2: "Sphere",
+        3: "Rectangular Pipe",
+        4: "Hemisphere",
+        5: "Cylinder Pipe",
+        6: "Pyramid",
+        7: "Tetrahedron",
+        8: "Cone",
+        9: "Toroid"
     }
 
     # managint the repetition (key = subject, gesture_type)
@@ -72,7 +72,7 @@ def load_data_domain_4(directory_path):
             line2 = f.readline()
             line3 = f.readline()
 
-        gesture_type = int(line2.split('=')[1].strip())
+        gesture_type = int(line2.split('=')[1].strip())-1
         subject = int(line3.split('=')[1].strip())
 
         # Compute the repetition
