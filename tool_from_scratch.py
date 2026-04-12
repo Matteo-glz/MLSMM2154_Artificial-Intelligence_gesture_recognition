@@ -98,3 +98,44 @@ def compute_dtw_distance_c_speed(seq1, seq2):
 
             dtw[i, j] = cost + min(dtw[i-1, j], dtw[i, j-1], dtw[i-1, j-1])
     return dtw[n, m]
+
+
+import numpy as np
+from numba import jit
+
+# 1. Le "Moteur" (Core) : C'est ici que la magie opère.
+# On travaille sur des entiers (codes ASCII) pour une vitesse maximale.
+@jit(nopython=True)
+def _edit_distance_core(s1, s2):
+    n, m = len(s1), len(s2)
+    
+    # On utilise l'optimisation à deux lignes pour la mémoire
+    prev_row = np.arange(m + 1)
+    curr_row = np.zeros(m + 1)
+
+    for i in range(1, n + 1):
+        curr_row[0] = i
+        for j in range(1, m + 1):
+            # Coût de substitution (comparaison d'entiers = ultra rapide)
+            cost = 0 if s1[i-1] == s2[j-1] else 1
+            
+            # Calcul du minimum entre Insertion, Suppression et Substitution
+            curr_row[j] = min(
+                prev_row[j] + 1,      # Deletion
+                curr_row[j - 1] + 1,  # Insertion
+                prev_row[j - 1] + cost # Substitution
+            )
+        # Transfert de ligne
+        prev_row[:] = curr_row[:]
+        
+    return prev_row[m]
+
+# 2. La "Façade" (Wrapper) : C'est la fonction que tu appelles.
+# Elle respecte ta contrainte : elle prend des chaînes de caractères (str).
+def edit_distance_fast(str1, str2):
+    # Conversion ultra-rapide de str vers array d'entiers (ASCII)
+    # On utilise .encode() pour passer en bytes, puis np.frombuffer
+    s1_arr = np.frombuffer(str1.encode('ascii'), dtype=np.uint8)
+    s2_arr = np.frombuffer(str2.encode('ascii'), dtype=np.uint8)
+    
+    return _edit_distance_core(s1_arr, s2_arr)
