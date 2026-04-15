@@ -345,7 +345,7 @@ def run_pipeline_dollar_one(
     # Import your existing splitting functions
     from data_splitting    import user_dependent_cv, user_independent_cv
     from data_preparation  import (fit_normalizer, apply_normalizer,
-                                   fit_pca, apply_pca)
+                                   fit_pca_per_gesture, apply_pca_per_gesture)
 
     all_results        = []
     global_predictions = {}
@@ -365,9 +365,9 @@ def run_pipeline_dollar_one(
             label = n_components if n_components != "no_pca" else "no_pca"
 
             if n_components != "no_pca":
-                pca        = fit_pca(train_norm, n_components=n_components)
-                train_proc = apply_pca(train_norm, pca)
-                test_proc  = apply_pca(test_norm,  pca)
+                pca        = fit_pca_per_gesture(train_norm, n_components=n_components)
+                train_proc = apply_pca_per_gesture(train_norm, pca)
+                test_proc  = apply_pca_per_gesture(test_norm,  pca)
             else:
                 train_proc = train_norm
                 test_proc  = test_norm

@@ -1,3 +1,6 @@
+from numba import jit
+import numpy as np
+
 def edit_distance(seq1, seq2): 
     col = len(seq2) + 1
     row = len(seq1) + 1
@@ -25,10 +28,6 @@ def edit_distance(seq1, seq2):
     return matrix[row-1][col-1]
 
 
-
-
-
-import numpy as np
 
 def euclidean_distance(p1, p2):
     #return np.sqrt(np.sum((np.array(p1) - np.array(p2))**2))
@@ -66,6 +65,7 @@ def compute_dtw_distance(seq1, seq2):
             )
 
     return dtw[n, m]
+
 def compute_dtw_distance_window(seq1, seq2, window=None):
     n, m = len(seq1), len(seq2)
     dtw = np.full((n+1, m+1), np.inf)
@@ -80,7 +80,7 @@ def compute_dtw_distance_window(seq1, seq2, window=None):
 
     return dtw[n, m]
 
-from numba import jit
+
 
 @jit(nopython=True) # This decorator makes it lightning fast
 def compute_dtw_distance_c_speed(seq1, seq2):
@@ -100,8 +100,6 @@ def compute_dtw_distance_c_speed(seq1, seq2):
     return dtw[n, m]
 
 
-import numpy as np
-from numba import jit
 
 # 1. Le "Moteur" (Core) : C'est ici que la magie opère.
 # On travaille sur des entiers (codes ASCII) pour une vitesse maximale.

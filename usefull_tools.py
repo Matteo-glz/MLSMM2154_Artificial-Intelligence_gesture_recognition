@@ -2,6 +2,7 @@
 import numpy as np
 import pandas as pd
 from sklearn.metrics import confusion_matrix
+from sklearn.decomposition import PCA
 
 '''Here the functions we used at a moment sometimes it was just ideas
     Sometimes it was to test something '''
@@ -193,3 +194,28 @@ def compute_mean_std_cm(global_predictions, n_clusters, k):
     # Return aggregated matrices
     return mean_cm, std_cm
 
+
+def fit_pca(train_gestures, n_components=3):
+    '''
+    Tool used to fit a PCA on the training set, it will be used to t
+    ransform both the training and testing sets in the same way, preventing data leakage
+    '''
+    all_points = np.vstack([g['trajectory'] for g in train_gestures])
+    
+    pca = PCA(n_components=n_components)
+    pca.fit(all_points)
+    
+    return pca
+
+def apply_pca(gestures, pca):
+    '''
+    Tool used to apply the PCA transformation to a set of gestures, using the PCA object fitted on the training set
+    '''
+    transformed = []
+    
+    for g in gestures:
+        g_copy = g.copy()
+        g_copy['trajectory'] = pca.transform(g['trajectory'])
+        transformed.append(g_copy)
+    
+    return transformed

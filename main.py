@@ -10,7 +10,7 @@ from data_loading import load_data_domain_1, load_data_domain_4
 from data_splitting import user_dependent_cv, user_independent_cv
 
 # 3. data preparation 
-from data_preparation import fit_normalizer, apply_normalizer, fit_pca, apply_pca
+from data_preparation import fit_normalizer, apply_normalizer, fit_pca_per_gesture, apply_pca_per_gesture
 
 # Extra : baseline methods from scratch 
 from tool_from_scratch import compute_dtw_distance_c_speed
@@ -52,9 +52,9 @@ def run_pipeline(gestures, k_options, pca_options, cluster_options, compression,
             label = n_components if n_components != "no_pca" else "no_pca"           # if no PCA we only apply a normalization (labels allows us to keep track of where are we)
 
             if n_components != "no_pca":
-                pca        = fit_pca(train_norm, n_components=n_components)     # Extract the direction vector based on train test (different for each fold)
-                train_proc = apply_pca(train_norm, pca)                         # Apply the PCA on the train-set with the parameters
-                test_proc  = apply_pca(test_norm,  pca)                         # Apply the PCA on the test-set with the parameters
+                pca        = fit_pca_per_gesture(train_norm, n_components=n_components)     # Extract the direction vector based on train test  (per each gesture per fold)
+                train_proc = apply_pca_per_gesture(train_norm, pca)                         # Apply the PCA on the train-set with the parameters (per gesture)
+                test_proc  = apply_pca_per_gesture(test_norm,  pca)                         # Apply the PCA on the test-set with the parameters
             else:
                 train_proc = train_norm
                 test_proc  = test_norm
@@ -159,14 +159,14 @@ if __name__ == "__main__":
             "cluster_options": [5, 7, 9, 11, 13, 15,17,19,21],
             "pca_options":      ["no_pca", 1,2, 3],
             "compression" : [True,False]
-        },}
-    '''
+        },
+
         "dtw": {
             "cluster_options": [0],        # unused for DTW, kept for uniform signature
             "pca_options":      ["no_pca",1, 2, 3],
             "compression" : []             # unused for DTW kept for uniform signature
         },
-    }'''
+    }
 
     # which data splitting we use 
     cv_modes  = ["dependent", "independent"]
