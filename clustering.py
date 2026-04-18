@@ -1,7 +1,6 @@
 from sklearn.cluster import KMeans
 import numpy as np
 from collections import Counter
-from numba import jit
 from tool_from_scratch import edit_distance_fast, _edit_distance_core
 
 

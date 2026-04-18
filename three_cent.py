@@ -54,8 +54,9 @@ import pandas as pd
 
 def _path_length(points: np.ndarray) -> float:
     """Total arc-length of a polyline (works for 2-D or 3-D)."""
-    diffs = np.diff(points, axis=0)
-    return float(np.sum(np.linalg.norm(diffs, axis=1)))
+    diffs = np.diff(points, axis=0)                 # Compute the vector between each succesive point (poins ABC => B-A, C-B)
+    distances = np.linalg.norm(diffs, axis=1)       # Compute the eaclidian distance between each pair of points
+    return float(np.sum(distances))                 # Add all the distances to get the total length of the path
 
 
 def _resample(points: np.ndarray, n: int) -> np.ndarray:
@@ -78,19 +79,19 @@ def _resample(points: np.ndarray, n: int) -> np.ndarray:
     if total == 0:                                # degenerate gesture (single point)
         return np.tile(points[0], (n, 1))
 
-    interval = total / (n - 1)                   # desired spacing between new points
-    D        = 0.0
-    new_pts  = [points[0].copy()]
+    interval = total / (n - 1)                   # desired spacing between new points 
+    D        = 0.0                               # set the acumulated distance to 0
+    new_pts  = [points[0].copy()]                # start the new path with the first point of the original path 
 
     i = 1
     while i < len(points) and len(new_pts) < n:
-        d = float(np.linalg.norm(points[i] - points[i - 1]))
+        d = float(np.linalg.norm(points[i] - points[i - 1])) # distance between the two succesive point in the original path
 
-        if D + d >= interval:
+        if D + d >= interval:                                    # if we have exceeded the desired spacing we need to add a new point by interpolation
             # Linear interpolation: place a new point at exactly `interval` distance
-            t  = (interval - D) / d
-            q  = points[i - 1] + t * (points[i] - points[i - 1])
-            new_pts.append(q)
+            t  = (interval - D) / d                              # compute the interpolation factor (between 0 and 1) to find the position of the new point along the segment between points[i-1] and points[i]
+            q  = points[i - 1] + t * (points[i] - points[i - 1]) # compute the new point by linear interpolation between points[i-1] and points[i]
+            new_pts.append(q)                                    # add the new point to the resampled path
 
             # Insert q back so we can continue from it
             points = np.insert(points, i, q, axis=0)
@@ -108,7 +109,7 @@ def _resample(points: np.ndarray, n: int) -> np.ndarray:
 
 def _centroid(points: np.ndarray) -> np.ndarray:
     """Mean position across all points."""
-    return points.mean(axis=0)
+    return points.mean(axis=0)          # compute the mean of each column (X,Y,Z) to get the centroïd. 
 
 
 def _path_distance(a: np.ndarray, b: np.ndarray) -> float:
@@ -120,7 +121,7 @@ def _path_distance(a: np.ndarray, b: np.ndarray) -> float:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# CHANGE 1 — new scaling function (replaces _scale_to_square)
+# CHANGE 1 — Scaling function 
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _scale_by_length(points: np.ndarray) -> np.ndarray:
@@ -135,19 +136,19 @@ def _scale_by_length(points: np.ndarray) -> np.ndarray:
     will be identical, while two gestures of different orientations
     will still differ (because we did NOT rotate first).
     """
-    length = _path_length(points)
+    length = _path_length(points) # set the length of the path to the total arc-length of the path
     if length == 0:
         return points
-    return points / length
+    return points / length        # Scale all the points bu the same factor (the total length) to make the total length of the path equal to 1. 
 
 
 def _translate_to_origin(points: np.ndarray) -> np.ndarray:
     """Translate so that the centroid is at the origin."""
-    return points - _centroid(points)
+    return points - _centroid(points) # set the centroid of the path to the origin (0,0,0)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# CHANGE 2 — new _preprocess (no rotation, length-based scale)
+# CHANGE 2 — Preprocessing pipeline 
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _preprocess(points: np.ndarray, n: int) -> np.ndarray:
@@ -156,10 +157,9 @@ def _preprocess(points: np.ndarray, n: int) -> np.ndarray:
 
     Steps
     -----
-    1. Resample to n equidistant points        (same as $1)
-    2. NO rotation                             (NEW — $1 rotated here)
-    3. Scale by trajectory length (uniform)    (NEW — $1 used bounding box)
-    4. Translate centroid to origin            (same as $1)
+    1. Resample to n equidistant points    
+    2. Scale by trajectory length (uniform)
+    3. Translate centroid to origin
 
     Parameters
     ----------
@@ -170,15 +170,14 @@ def _preprocess(points: np.ndarray, n: int) -> np.ndarray:
     -------
     np.ndarray, shape (n, dims)
     """
-    pts = _resample(points, n)
-    # step 2 intentionally omitted — no rotation
-    pts = _scale_by_length(pts)
-    pts = _translate_to_origin(pts)
+    pts = _resample(points, n)          # Resample the original path to n equidistant points
+    pts = _scale_by_length(pts)         # Scale the resampled to a refereence length of 1 
+    pts = _translate_to_origin(pts)     # Translate the scaled path to the orignin (0,0,0)
     return pts
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Template library — identical structure to dollar_one.py
+# Template library 
 # ─────────────────────────────────────────────────────────────────────────────
 
 def build_templates(train_gestures: list, n_points: int) -> list:
@@ -376,7 +375,7 @@ if __name__ == "__main__":
 
                 df, preds = run_pipeline_three_cent(
                     gestures         = gestures,
-                    n_points_options = [16, 32, 64, 128],
+                    n_points_options = [16, 32, 64, 128, 256],
                     pca_options      = ["no_pca", 1, 2, 3],
                     cv_mode          = cv_mode,
                 )
