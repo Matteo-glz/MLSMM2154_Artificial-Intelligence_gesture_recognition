@@ -17,6 +17,7 @@ from tool_from_scratch import compute_dtw_distance_c_speed
 
 # 4. Models 
 from clustering import fit_kmeans, apply_compression, apply_symbolic_transformation, predict_gesture_type_knn
+from three_cent import build_templates, recognize
 
 # 5. Assesment
 from assesment import majority_vote
@@ -25,7 +26,7 @@ from assesment import majority_vote
 from saving_result import save_results
 
 
-def run_pipeline(gestures, k_options, pca_options, cluster_options, compression,
+def run_pipeline(gestures, k_options, pca_options, cluster_options=0, compression=False,n_points_options= 0,
                  cv_mode="dependent", method="edit-distance"):
     
     all_results = []
@@ -49,7 +50,7 @@ def run_pipeline(gestures, k_options, pca_options, cluster_options, compression,
     # For each fold, we will use (or not) a PCA. the number of the components is given in a dictonnary 
     # All of them will be tested. So we loop on the dictonnary to test with different number of components
         for n_components in pca_options:
-            label = n_components if n_components != "no_pca" else "no_pca"           # if no PCA we only apply a normalization (labels allows us to keep track of where are we)
+            pca_label = n_components if n_components != "no_pca" else "no_pca"           # if no PCA we only apply a normalization (labels allows us to keep track of where are we)
 
             if n_components != "no_pca":
                 pca        = fit_pca_per_gesture(train_norm, n_components=n_components)     # Extract the direction vector based on train test  (per each gesture per fold)
@@ -74,7 +75,7 @@ def run_pipeline(gestures, k_options, pca_options, cluster_options, compression,
                     for k in k_options: 
                         for comp in compression : 
                             y_true, y_pred = [], []                         # the real gesture and the predicted gesture. 
-                            config_key = (label, n_clusters, k, comp)             # the config_key save the final configuration for each fold (will be extract later)
+                            config_key = (pca_label, n_clusters, k, comp)             # the config_key save the final configuration for each fold (will be extract later)
 
                             if config_key not in global_predictions:        # prevent us to test twice the same configuration
                                 global_predictions[config_key] = {"y_true": [], "y_pred": []}   #keep track for each tested gesture in the given configuration of its real value and its predicted value
@@ -90,7 +91,8 @@ def run_pipeline(gestures, k_options, pca_options, cluster_options, compression,
 
                             all_results.append({                                                # Log metadata and performance metrics for this specific hyperparameter configuration
                                 "fold_id":     fold_id,
-                                "n_components": label,
+                                "n_components": pca_label,
+                                "n_points":     "N/A",
                                 "n_clusters":  n_clusters,
                                 "compression" : comp,
                                 "k":           k,
@@ -98,7 +100,7 @@ def run_pipeline(gestures, k_options, pca_options, cluster_options, compression,
                             })
 
             # ── DTW branch ───────────────────────────────────────────────
-            else:
+            elif method == "dtw":
                 distance_cache = []                             # Iterate through each gesture in the test set
                 for test_g in test_proc:                        # Iterate through each gesture in the test set                                  
                     dists = []                                  # Temporary list to store distances for the current test gesture
@@ -114,7 +116,7 @@ def run_pipeline(gestures, k_options, pca_options, cluster_options, compression,
                 # ------- KNN Evaluation -------------
                 for k in k_options:                                                 # Test different K-neighbor values to find the optimal configuration
                     y_true, y_pred = [], []                                         # Lists to track ground truth and model predictions
-                    config_key = (label, k)                                         # Unique identifier for this (PCA_components, K) configuration
+                    config_key = (pca_label, k)                                         # Unique identifier for this (PCA_components, K) configuration
 
                     if config_key not in global_predictions:                        # Initialize global results tracking if configuration is new
                         global_predictions[config_key] = {"y_true": [], "y_pred": []}
@@ -131,11 +133,44 @@ def run_pipeline(gestures, k_options, pca_options, cluster_options, compression,
 
                     all_results.append({                                            # Log experimental metadata and performance for reporting
                         "fold_id":      fold_id,
-                        "n_components": label,
+                        "n_components": pca_label,
+                        "n_points":     "N/A",
                         "n_clusters":   "N/A",
                         "compression" : "N/A",                                      # DTW bypasses clustering (unlike the Edit Distance branch)
                         "k":            k,
                         "accuracy":     accuracy
+                    })
+            
+
+            # ── Three-cent ───────────────────────────────────────────────
+            elif method == "three-cent" : 
+                for n_points in n_points_options:
+
+                    templates = build_templates(train_proc, n_points)
+
+                    y_true, y_pred = [], []
+                    config_key = (pca_label, n_points)
+
+                    if config_key not in global_predictions:
+                        global_predictions[config_key] = {"y_true": [], "y_pred": []}
+
+                    for test_g in test_proc:
+                        pred = recognize(test_g['trajectory'], templates, n_points)
+                        y_true.append(test_g['gesture_type'])
+                        y_pred.append(pred)
+
+                    accuracy = np.mean(np.array(y_true) == np.array(y_pred))
+                    global_predictions[config_key]["y_true"].extend(y_true)
+                    global_predictions[config_key]["y_pred"].extend(y_pred)
+
+                    all_results.append({
+                        "fold_id":      fold_id,
+                        "n_components": pca_label,
+                        "n_points":     n_points,
+                        "n_clusters":   "N/A",
+                        "k":            1,
+                        "compression":  "N/A",
+                        "accuracy":     accuracy,
                     })
 
     return pd.DataFrame(all_results), global_predictions
@@ -156,20 +191,30 @@ if __name__ == "__main__":
     # which base line method we use and with which hyperparameters
     methods = {
         "edit-distance": {
-            "cluster_options": [5, 7, 9, 11, 13, 15,17,19,21],
-            "pca_options":      ["no_pca", 1,2, 3],
-            "compression" : [True,False]
+        "cluster_options": [5, 7, 9, 11, 13, 15,17,19,21],
+        "compression" : [True,False],
+        "n_points_options" : []
         },
 
         "dtw": {
-            "cluster_options": [0],        # unused for DTW, kept for uniform signature
-            "pca_options":      ["no_pca",1, 2, 3],
-            "compression" : []             # unused for DTW kept for uniform signature
+            "cluster_options": [],        # unused for DTW, kept for uniform signature
+            "compression" : [],
+            "n_points_options" : []        # unused for DTW kept for uniform signature
+        },
+
+        "three-cent" : {
+            "cluster_options": [0], 
+            "compression" : [],
+            "n_points_options" : [16, 32, 64, 128, 256]
         },
     }
 
+    # PCA 
+    pca_options = ["no_pca", 1, 2, 3]
+
     # which data splitting we use 
     cv_modes  = ["dependent", "independent"]
+
 
     # How many neighbors we look at 
     k_options = [1, 3, 5, 7]
@@ -190,30 +235,34 @@ if __name__ == "__main__":
                 df, preds = run_pipeline(
                     gestures,
                     k_options        = k_options,
-                    pca_options      = params["pca_options"],
+                    pca_options      = pca_options,
                     cluster_options  = params["cluster_options"],
                     compression      = params["compression"],
+                    n_points_options = params["n_points_options"],
                     cv_mode          = cv_mode,
                     method           = method_name,
                 )
 
                 # groupby columns differ slightly by method
-                group_cols = ["n_components", "n_clusters", "k", "compression"]
+                group_cols = ["n_components", "n_clusters", "k", "compression", "n_points"]
                 summary    = df.groupby(group_cols)["accuracy"].agg(["mean", "std"])
                 best_config = summary["mean"].idxmax()
                 print(f"  Best config: {best_config}  "
                       f"mean={summary.loc[best_config,'mean']:.4f}")
 
                 # Confusion matrix for best config
-                pca_label  = best_config[0]
-                n_clusters = best_config[1]
-                k_best     = best_config[2]
+                pca_label   = best_config[0]
+                n_clusters  = best_config[1]
+                k_best      = best_config[2]
                 compression = best_config[3]
+                n_points    = best_config[4]
 
                 if method_name == "edit-distance":
                     key = (pca_label, n_clusters, k_best, compression)
-                else:
+                elif method_name == "dtw":
                     key = (pca_label, k_best)
+                elif method_name == "three-cent" : 
+                    key = (pca_label, n_points) 
 
                 y_true = preds[key]["y_true"]
                 y_pred = preds[key]["y_pred"]
