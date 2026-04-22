@@ -7,6 +7,7 @@ import pandas as pd
 from data_loading import load_data_domain_1, load_data_domain_4
 
 # 2. data splitting 
+
 from data_splitting import user_dependent_cv, user_independent_cv
 
 # 3. data preparation 
@@ -177,8 +178,10 @@ def run_pipeline(gestures, k_options, pca_options, cluster_options=0, compressio
 
 
 if __name__ == "__main__":
-    path_domain_1 = "/Users/matteogalizia/Documents/GitHub/MLSMM2154_Artificial-Intelligence_gesture_recognition/GestureData/GestureDataDomain1_Mons/Domain1_csv"
-    path_domain_4 = "/Users/matteogalizia/Documents/GitHub/MLSMM2154_Artificial-Intelligence_gesture_recognition/GestureData/GestureDataDomain4_Mons"
+    path_domain_1 = "C:/Users/PC/Documents/GitHub/MLSMM2154_Artificial-Intelligence_gesture_recognition/GestureData_Mons/GestureDataDomain1_Mons/Domain1_csv"
+    #path_domain_1 = "/Users/matteogalizia/Documents/GitHub/MLSMM2154_Artificial-Intelligence_gesture_recognition/GestureData/GestureDataDomain1_Mons/Domain1_csv"
+    path_domain_4 = "C:/Users/PC/Documents/GitHub/MLSMM2154_Artificial-Intelligence_gesture_recognition/GestureData_Mons/GestureDataDomain4_Mons"
+    #path_domain_4 = "/Users/matteogalizia/Documents/GitHub/MLSMM2154_Artificial-Intelligence_gesture_recognition/GestureData/GestureDataDomain4_Mons"
 
     labels = list(range(10))
 
