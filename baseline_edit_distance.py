@@ -1,7 +1,7 @@
 from sklearn.cluster import KMeans
 import numpy as np
 from collections import Counter
-from tool_from_scratch import edit_distance_fast, _edit_distance_core
+from utils_algorithms import edit_distance_fast, _edit_distance_core
 
 
 def fit_kmeans(train_gestures, n_clusters=10):

@@ -6,3 +6,5 @@
 
 # Text files
 *.txt
+
+venv/

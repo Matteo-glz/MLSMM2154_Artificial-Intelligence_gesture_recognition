@@ -35,10 +35,10 @@ sys.path.insert(0, os.path.dirname(__file__))
 from data_loading      import load_data_domain_1, load_data_domain_4
 from data_preparation  import fit_normalizer, apply_normalizer
 from data_splitting    import user_independent_cv, user_dependent_cv
-from clustering        import (fit_kmeans, apply_symbolic_transformation,
-                               apply_compression, predict_gesture_type_knn)
-from tool_from_scratch import compute_dtw_distance_c_speed
-from three_cent        import build_templates, recognize, _preprocess, _resample, _scale_by_length, _translate_to_origin
+from baseline_edit_distance import (fit_kmeans, apply_symbolic_transformation,
+                                    apply_compression, predict_gesture_type_knn)
+from utils_algorithms       import compute_dtw_distance_c_speed
+from baseline_three_cent    import build_templates, recognize, _preprocess, _resample, _scale_by_length, _translate_to_origin
 
 # ── Palettes ─────────────────────────────────────────────────────────────────
 GESTURE_COLORS = [
@@ -489,7 +489,7 @@ def fig_three_cent_preprocessing(gestures, gesture_class=0, n_points=32, n_examp
     if len(targets) >= 2:
         s1_proc = _preprocess(targets[0]["trajectory"], n_points)
         s2_proc = _preprocess(targets[1]["trajectory"], n_points)
-        from three_cent import _path_distance
+        from baseline_three_cent import _path_distance
         pdist_proc = _path_distance(s1_proc, s2_proc)
         # raw: resample both to same n_points then compute
         r1 = _resample(targets[0]["trajectory"], n_points)
@@ -586,7 +586,7 @@ def fig_baseline_knn_comparison(gestures, kmeans: KMeans,
     # ── Edit-distance neighbours ──────────────────────────────────────────────
     train_sym = apply_compression(apply_symbolic_transformation(train_gs, kmeans))
     test_sym  = apply_compression(apply_symbolic_transformation([test_g], kmeans))[0]
-    from tool_from_scratch import edit_distance_fast
+    from utils_algorithms import edit_distance_fast
     ed_dists  = sorted([(edit_distance_fast(test_sym["seq_clean"], tg["seq_clean"]),
                           tg) for tg in train_sym], key=lambda x: x[0])
     ed_nn     = [g for _,g in ed_dists[:k]]
@@ -600,7 +600,7 @@ def fig_baseline_knn_comparison(gestures, kmeans: KMeans,
     # ── 3-Cent neighbours ─────────────────────────────────────────────────────
     templates = build_templates(train_gs, n_points_3cent)
     cand_proc = _preprocess(test_g["trajectory"], n_points_3cent)
-    from three_cent import _path_distance
+    from baseline_three_cent import _path_distance
     tc_dists  = sorted([(_path_distance(cand_proc, tmpl["preprocessed"]), tmpl)
                          for tmpl in templates], key=lambda x: x[0])
     # match back to original gesture (gesture_type + subject + repetition)

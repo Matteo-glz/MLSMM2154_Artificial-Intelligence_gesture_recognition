@@ -139,7 +139,7 @@ def _process_fold(
     """
     # Late imports so each worker process initialises cleanly
     from data_preparation  import fit_normalizer, apply_normalizer
-    from tool_from_scratch import edit_distance_fast, compute_dtw_distance_c_speed
+    from utils_algorithms import edit_distance_fast, compute_dtw_distance_c_speed
 
     mu, sig   = fit_normalizer(train)
     train_n   = apply_normalizer(train, mu, sig)

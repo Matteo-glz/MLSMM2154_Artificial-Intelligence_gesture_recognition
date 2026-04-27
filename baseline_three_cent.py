@@ -343,7 +343,7 @@ from data_loading import load_data_domain_1, load_data_domain_4
 
 
 # 6. export results
-from saving_result import save_results
+from utils_saving import save_results
 
 if __name__ == "__main__":
     path_domain_1 = "/Users/matteogalizia/Documents/GitHub/MLSMM2154_Artificial-Intelligence_gesture_recognition/GestureData/GestureDataDomain1_Mons/Domain1_csv"

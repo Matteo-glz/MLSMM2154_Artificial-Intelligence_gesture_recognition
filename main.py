@@ -14,17 +14,17 @@ from data_splitting import user_dependent_cv, user_independent_cv
 from data_preparation import fit_normalizer, apply_normalizer, fit_pca_per_gesture, apply_pca_per_gesture
 
 # Extra : baseline methods from scratch 
-from tool_from_scratch import compute_dtw_distance_c_speed
+from utils_algorithms import compute_dtw_distance_c_speed
 
-# 4. Models 
-from clustering import fit_kmeans, apply_compression, apply_symbolic_transformation, predict_gesture_type_knn
-from three_cent import build_templates, recognize
+# 4. Models
+from baseline_edit_distance import fit_kmeans, apply_compression, apply_symbolic_transformation, predict_gesture_type_knn
+from baseline_three_cent import build_templates, recognize
 
 # 5. Assesment
-from assesment import majority_vote
+from utils_assessment import majority_vote
 
 # 6. export results
-from saving_result import save_results
+from utils_saving import save_results
 
 
 def run_pipeline(gestures, k_options, pca_options, cluster_options=0, compression=False,n_points_options= 0,

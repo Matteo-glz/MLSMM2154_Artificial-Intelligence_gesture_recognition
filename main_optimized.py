@@ -1,5 +1,5 @@
 """
-main.optimized.py
+main_optimized.py
 -----------------------------------------------------------------------------
 100 % CPU utilisation via fine-grained task parallelism.
 
@@ -26,11 +26,11 @@ Progress display
 
 Usage
 -----
-  python main.optimized.py                      # domain 1+4, ed+tc
-  python main.optimized.py --domain 1           # domain 1 only
-  python main.optimized.py --method ed tc dtw   # include DTW (slow)
-  python main.optimized.py --cv dependent       # one CV mode only
-  python main.optimized.py --jobs 8             # override worker count
+  python main_optimized.py                      # domain 1+4, ed+tc
+  python main_optimized.py --domain 1           # domain 1 only
+  python main_optimized.py --method ed tc dtw   # include DTW (slow)
+  python main_optimized.py --cv dependent       # one CV mode only
+  python main_optimized.py --jobs 8             # override worker count
 """
 
 from __future__ import annotations
@@ -49,11 +49,11 @@ from data_loading    import load_data_domain_1, load_data_domain_4
 from data_splitting  import user_dependent_cv, user_independent_cv
 from data_preparation import (fit_normalizer, apply_normalizer,
                                fit_pca_per_gesture, apply_pca_per_gesture)
-from tool_from_scratch import (edit_distance_fast,
-                                compute_dtw_distance_c_speed)
-from three_cent      import build_templates, recognize
-from assesment       import majority_vote
-from saving_result   import save_results
+from utils_algorithms    import (edit_distance_fast,
+                                  compute_dtw_distance_c_speed)
+from baseline_three_cent import build_templates, recognize
+from utils_assessment    import majority_vote
+from utils_saving        import save_results
 
 # -- Hyper-parameter grid -----------------------------------------------------
 PCA_OPTIONS      = ["no_pca", 1, 2, 3]
