@@ -1,56 +1,43 @@
 """
 baseline_transformer.py
 ─────────────────────────────────────────────────────────────────────────────
-Transformer encoder gesture recognizer — integrated into the existing pipeline.
+Transformer encoder gesture recognizer, rebuilt to match the official
+tensor2tensor implementation (Vaswani et al., 2017).
+    github.com/tensorflow/tensor2tensor
 
-Design decisions
-----------------
-• Same resampling and data-preparation helpers as baseline_bilstm.py (resample_trajectory,
-  _prepare_data) — kept local to avoid cross-file coupling.
+Changes from a naive Keras Transformer
+---------------------------------------
+1. Positional encoding  →  tensor2tensor get_timing_signal_1d:
+   - Frequencies spaced as  min_scale * exp(-log(max/min) / (d//2 - 1) * i)
+   - Sin and cos signals are CONCATENATED (first half = sin, second half = cos),
+     not interleaved as in the paper's notation.
 
-• Architecture:
-    Input → Dense(d_model) → + sinusoidal positional encoding
-          → [MultiHeadAttention + residual + LayerNorm]
-          → [FFN(d_model*2 → d_model) + residual + LayerNorm]
-          → GlobalAveragePooling1D → Dropout → Dense(n_classes, softmax)
+2. Pre-normalization  (tensor2tensor default):
+   - LayerNorm is applied BEFORE each sub-layer (attention and FFN).
+   - A final LayerNorm is applied after the last encoder block.
+   - Corresponds to tensor2tensor's layer_preprocess / layer_postprocess
+     with hparams.layer_prepostprocess_sequence = "dan".
 
-• One encoder block is chosen deliberately: gesture sequences are short
-  (32–128 points), so stacking blocks gives diminishing returns and
-  over-fits faster on a small dataset. A single block already gives every
-  time-step access to the full sequence context via self-attention.
+3. FFN = dense_relu_dense  (tensor2tensor common_layers.dense_relu_dense):
+   - Structure: Dense(filter_size, ReLU) → Dropout(relu_dropout) → Dense(d_model)
+   - Dropout is between the two Dense layers, not on the sub-layer output.
+   - The residual connection additionally applies dropout (layer_postprocess_dropout).
 
-• Positional encoding is sinusoidal (fixed, Vaswani et al. 2017), not
-  learned. On a small dataset learned position embeddings tend to over-fit
-  the position distribution of training examples.
+4. filter_size = 4 × d_model  (tensor2tensor hparams.filter_size default ratio).
 
-• n_heads is derived automatically from d_model: the largest power-of-2
-  ≤ 8 that divides d_model evenly, so every head has at least 4 dimensions.
-
-• Hyperparameters swept: target_length (resample resolution, same as BiLSTM)
-  and d_model (embedding dimension, analogous to n_units in BiLSTM).
-
-• All training details (EarlyStopping, fold-level model rebuild, per-fold
-  normalisation) are identical to baseline_bilstm.py.
-
-Relation to baseline_bilstm.py
--------------------------------
-This file is a drop-in companion to baseline_bilstm.py. The public API mirrors
-run_bilstm_pipeline / run_bilstm_for_dataset exactly so that the same
-save_results / summary code works without modification.
+5. num_layers is now configurable (tensor2tensor num_encoder_layers; default 1).
 
 Public API
 ----------
-    resample_trajectory(traj, target_length)               → np.ndarray
-    positional_encoding(seq_len, d_model)                  → np.ndarray
+    get_timing_signal_1d(seq_len, channels)                → np.ndarray
     build_transformer_model(input_shape, n_classes,
-                            d_model, dropout_rate)         → keras.Model
-    run_transformer_pipeline(gestures, target_length_options,
-                             d_model_options, cv_mode,
-                             epochs, batch_size)           → (DataFrame, global_predictions)
-    run_transformer_for_dataset(domain_name, gestures,
-                                cv_mode, output_dir)       → None
+                            d_model, num_layers,
+                            ffn_filter_size, dropout_rate) → keras.Model
+    run_transformer_pipeline(...)                          → (DataFrame, preds)
+    run_transformer_for_dataset(...)                       → None
 """
 
+import math
 import numpy as np
 import pandas as pd
 from sklearn.metrics import confusion_matrix
@@ -65,26 +52,24 @@ from data_preparation import fit_normalizer, apply_normalizer
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Utility: trajectory resampling (identical to baseline_bilstm.py)
+# Utility: trajectory resampling
 # ─────────────────────────────────────────────────────────────────────────────
 
 def resample_trajectory(traj: np.ndarray, target_length: int) -> np.ndarray:
     n, n_dims = traj.shape
     if n == target_length:
         return traj.copy()
-
     old_indices = np.arange(n)
     new_indices = np.linspace(0, n - 1, target_length)
-
     return np.stack(
         [np.interp(new_indices, old_indices, traj[:, dim])
          for dim in range(n_dims)],
-        axis=1
+        axis=1,
     )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Utility: dataset preparation (identical to baseline_bilstm.py)
+# Utility: dataset preparation
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _prepare_data(gestures: list, target_length: int,
@@ -94,7 +79,6 @@ def _prepare_data(gestures: list, target_length: int,
         traj = resample_trajectory(g["trajectory"], target_length)
         X.append(traj)
         y.append(g["gesture_type"] - label_offset)
-
     X = np.array(X, dtype=np.float32)
     y = np.array(y, dtype=np.int32)
     Y = to_categorical(y, num_classes=n_classes).astype(np.float32)
@@ -102,96 +86,160 @@ def _prepare_data(gestures: list, target_length: int,
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Positional encoding
+# Positional encoding — tensor2tensor get_timing_signal_1d
+# ref: tensor2tensor/layers/common_attention.py  line ~408
 # ─────────────────────────────────────────────────────────────────────────────
 
-def positional_encoding(seq_len: int, d_model: int) -> np.ndarray:
+def get_timing_signal_1d(
+        seq_len: int,
+        channels: int,
+        min_timescale: float = 1.0,
+        max_timescale: float = 1.0e4,
+) -> np.ndarray:
     """
-    Sinusoidal positional encoding (Vaswani et al., 2017).
-    Returns shape (1, seq_len, d_model) — broadcast-ready for Keras addition.
+    Sinusoidal positional encoding matching tensor2tensor get_timing_signal_1d.
+
+    Timescales are spaced geometrically:
+        log_increment = log(max_timescale / min_timescale) / max(T//2 - 1, 1)
+        inv_timescales[i] = min_timescale * exp(-log_increment * i)
+
+    The signal is built by concatenating all sin signals followed by all cos
+    signals (NOT interleaved), then added to the input via add_timing_signal_1d.
+
+    Returns shape (1, seq_len, channels) — broadcast-ready for Keras addition.
     """
-    positions = np.arange(seq_len)[:, np.newaxis]       # (T, 1)
-    dims      = np.arange(d_model)[np.newaxis, :]       # (1, d_model)
+    num_timescales = channels // 2
+    positions = np.arange(seq_len, dtype=np.float32)            # (T,)
 
-    angles = positions / np.power(10000.0, (2 * (dims // 2)) / d_model)
+    log_timescale_increment = (
+        math.log(max_timescale / min_timescale) /
+        max(num_timescales - 1, 1)
+    )
+    inv_timescales = min_timescale * np.exp(
+        -log_timescale_increment * np.arange(num_timescales, dtype=np.float32)
+    )                                                            # (channels//2,)
 
-    angles[:, 0::2] = np.sin(angles[:, 0::2])  # even indices → sin
-    angles[:, 1::2] = np.cos(angles[:, 1::2])  # odd  indices → cos
+    scaled_time = (
+        positions[:, np.newaxis] * inv_timescales[np.newaxis, :]
+    )                                                            # (T, channels//2)
 
-    return angles[np.newaxis, :, :].astype(np.float32)  # (1, T, d_model)
+    # Concatenate: first half = sin, second half = cos  (tensor2tensor style)
+    signal = np.concatenate(
+        [np.sin(scaled_time), np.cos(scaled_time)], axis=1
+    )                                                            # (T, channels)
+
+    if channels % 2 != 0:                                       # pad odd channels
+        signal = np.concatenate(
+            [signal, np.zeros((seq_len, 1), dtype=np.float32)], axis=1
+        )
+
+    return signal[np.newaxis].astype(np.float32)                # (1, T, channels)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Model definition
+# Model definition — tensor2tensor Transformer encoder
+# ref: tensor2tensor/layers/common_attention.py  (multihead_attention)
+#      tensor2tensor/layers/common_layers.py     (dense_relu_dense, layer_norm)
+#      tensor2tensor/layers/transformer_layers.py (transformer_encoder)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _n_heads_for(d_model: int) -> int:
-    """Largest power-of-2 head count that divides d_model evenly and is ≤ 8."""
+    """Largest power-of-2 ≤ 8 that divides d_model evenly."""
     for h in [8, 4, 2, 1]:
         if d_model % h == 0:
             return h
     return 1
 
 
-def build_transformer_model(input_shape: tuple, n_classes: int,
-                            d_model: int = 64,
-                            dropout_rate: float = 0.3) -> Model:
+def build_transformer_model(
+        input_shape: tuple,
+        n_classes: int,
+        d_model: int = 64,
+        num_layers: int = 1,
+        ffn_filter_size: int = None,
+        dropout_rate: float = 0.1,
+) -> Model:
     """
-    Build and compile a Transformer encoder classifier.
+    Transformer encoder classifier matching tensor2tensor's architecture.
 
-    Architecture
-    ------------
-    Input(T, D) → Dense(d_model) → +PosEnc(T, d_model)
-               → MHA(n_heads) + residual + LayerNorm
-               → FFN(d_model*2 → d_model) + residual + LayerNorm
-               → GlobalAvgPool → Dropout → Dense(n_classes, softmax)
+    Per-layer structure (pre-norm, tensor2tensor default)
+    ------------------------------------------------------
+    x_norm  = LayerNorm(x)                      ← layer_preprocess
+    attn    = MultiHeadAttention(x_norm, x_norm) ← attention_dropout inside
+    x       = x + Dropout(attn)                 ← layer_postprocess (residual drop)
+
+    x_norm  = LayerNorm(x)                      ← layer_preprocess
+    h       = Dense(filter_size, ReLU)(x_norm)  ┐
+    h       = Dropout(h)                        ├ dense_relu_dense
+    ffn     = Dense(d_model)(h)                 ┘
+    x       = x + Dropout(ffn)                  ← layer_postprocess (residual drop)
+
+    After all layers:
+    x       = LayerNorm(x)                      ← final layer_preprocess
+    → GlobalAvgPool → Dropout → Dense(n_classes, softmax)
 
     Parameters
     ----------
-    input_shape  : (target_length, n_dims) e.g. (64, 3)
-    n_classes    : number of gesture classes
-    d_model      : embedding / attention dimension
-    dropout_rate : dropout probability
-
-    Returns
-    -------
-    Compiled keras.Model
+    input_shape    : (target_length, n_dims)
+    n_classes      : number of gesture classes
+    d_model        : hidden_size in tensor2tensor
+    num_layers     : num_encoder_layers in tensor2tensor  (default 1)
+    ffn_filter_size: filter_size in tensor2tensor; defaults to 4 × d_model
+    dropout_rate   : applied to attention weights, relu intermediate, and residuals
     """
+    if ffn_filter_size is None:
+        ffn_filter_size = d_model * 4          # tensor2tensor default ratio
+
     n_heads = _n_heads_for(d_model)
     key_dim = d_model // n_heads
     seq_len = input_shape[0]
 
-    pe = positional_encoding(seq_len, d_model)      # (1, T, d_model)
+    # Positional encoding constant — add_timing_signal_1d
+    pe = get_timing_signal_1d(seq_len, d_model)
     pe_constant = tf.constant(pe, dtype=tf.float32)
 
-    # ── Input & projection ───────────────────────────────────────────────────
+    # ── Input projection ─────────────────────────────────────────────────────
     inputs = layers.Input(shape=input_shape, name="trajectory")
-    x = layers.Dense(d_model, name="input_projection")(inputs)  # (B, T, d_model)
+    x = layers.Dense(d_model, name="input_projection")(inputs)
+    x = x + pe_constant                        # add_timing_signal_1d
 
-    # ── Positional encoding ──────────────────────────────────────────────────
-    x = x + pe_constant
+    # ── Encoder layers ───────────────────────────────────────────────────────
+    for i in range(num_layers):
+        p = f"layer_{i}"
 
-    # ── Transformer encoder block ────────────────────────────────────────────
-    # Self-attention sub-layer
-    attn_out = layers.MultiHeadAttention(
-        num_heads=n_heads, key_dim=key_dim, dropout=dropout_rate,
-        name="mha",
-    )(x, x)
-    x = layers.LayerNormalization(epsilon=1e-6, name="ln_1")(x + attn_out)
+        # Self-attention sub-layer
+        # layer_preprocess: LayerNorm before attention
+        x_norm = layers.LayerNormalization(epsilon=1e-6, name=f"{p}_ln_attn")(x)
+        attn_out = layers.MultiHeadAttention(
+            num_heads=n_heads,
+            key_dim=key_dim,
+            dropout=dropout_rate,              # attention_dropout on weights
+            name=f"{p}_mha",
+        )(x_norm, x_norm)
+        # layer_postprocess: residual dropout + skip connection
+        attn_out = layers.Dropout(dropout_rate, name=f"{p}_attn_residual_drop")(attn_out)
+        x = x + attn_out
 
-    # Feed-forward sub-layer (expand then project back)
-    ffn = layers.Dense(d_model * 2, activation="relu", name="ffn_1")(x)
-    ffn = layers.Dense(d_model,                         name="ffn_2")(ffn)
-    ffn = layers.Dropout(dropout_rate)(ffn)
-    x = layers.LayerNormalization(epsilon=1e-6, name="ln_2")(x + ffn)
+        # FFN sub-layer (dense_relu_dense)
+        # layer_preprocess: LayerNorm before FFN
+        x_norm = layers.LayerNormalization(epsilon=1e-6, name=f"{p}_ln_ffn")(x)
+        ffn = layers.Dense(ffn_filter_size, activation="relu", name=f"{p}_ffn_1")(x_norm)
+        ffn = layers.Dropout(dropout_rate, name=f"{p}_relu_drop")(ffn)   # relu_dropout
+        ffn = layers.Dense(d_model, name=f"{p}_ffn_2")(ffn)
+        # layer_postprocess: residual dropout + skip connection
+        ffn = layers.Dropout(dropout_rate, name=f"{p}_ffn_residual_drop")(ffn)
+        x = x + ffn
 
-    # ── Pooling & classification ─────────────────────────────────────────────
+    # ── Final LayerNorm (tensor2tensor layer_preprocess at encoder output) ───
+    x = layers.LayerNormalization(epsilon=1e-6, name="final_ln")(x)
+
+    # ── Classification head ──────────────────────────────────────────────────
     x = layers.GlobalAveragePooling1D(name="pool")(x)
-    x = layers.Dropout(dropout_rate, name="dropout")(x)
+    x = layers.Dropout(dropout_rate, name="head_drop")(x)
     outputs = layers.Dense(n_classes, activation="softmax", name="classifier")(x)
 
     model = Model(inputs, outputs,
-                  name=f"Transformer_d{d_model}_h{n_heads}")
+                  name=f"T2T_d{d_model}_h{n_heads}_l{num_layers}")
     model.compile(
         optimizer="adam",
         loss="categorical_crossentropy",
@@ -208,48 +256,38 @@ def run_transformer_pipeline(
         gestures: list,
         target_length_options: list = None,
         d_model_options: list = None,
+        num_layers_options: list = None,
         cv_mode: str = "dependent",
         epochs: int = 50,
         batch_size: int = 16,
-        dropout_rate: float = 0.3,
+        dropout_rate: float = 0.1,
         validation_split: float = 0.10,
 ):
     """
     Run the full cross-validated Transformer experiment.
 
-    Mirrors run_bilstm_pipeline from baseline_bilstm.py exactly — same return format,
-    same cross-validation contract, same normalisation approach.
-
     Hyperparameters swept
     ---------------------
-    target_length : resampling resolution (same role as in BiLSTM)
-    d_model       : Transformer embedding dimension (analogous to n_units)
-
-    Parameters
-    ----------
-    gestures              : list of gesture dicts (standard pipeline format)
-    target_length_options : list of int — e.g. [32, 64, 128]. Defaults to [64].
-    d_model_options       : list of int — e.g. [32, 64, 128]. Defaults to [64].
-    cv_mode               : "dependent" or "independent"
-    epochs                : maximum training epochs
-    batch_size            : mini-batch size
-    dropout_rate          : dropout probability
-    validation_split      : fraction of training set used for EarlyStopping
+    target_length : resampling resolution
+    d_model       : embedding / attention dimension (tensor2tensor hidden_size)
+    num_layers    : number of encoder blocks        (tensor2tensor num_encoder_layers)
 
     Returns
     -------
-    df                 : pd.DataFrame — one row per (fold, target_length, d_model)
-    global_predictions : dict — key   = (target_length, d_model)
+    df                 : pd.DataFrame  — one row per (fold, target_length, d_model, num_layers)
+    global_predictions : dict — key = (target_length, d_model, num_layers)
                                 value = {"y_true": [...], "y_pred": [...]}
     """
     if target_length_options is None:
         target_length_options = [64]
     if d_model_options is None:
         d_model_options = [64]
+    if num_layers_options is None:
+        num_layers_options = [1]
 
     all_types    = sorted(set(g["gesture_type"] for g in gestures))
     n_classes    = len(all_types)
-    label_offset = min(all_types)       # 0 → no shift; 1 → shift labels by 1
+    label_offset = min(all_types)
 
     all_results        = []
     global_predictions = {}
@@ -259,101 +297,86 @@ def run_transformer_pipeline(
     for train, test, fold_id in cv_fn(gestures):
         print(f"  Fold {fold_id}...", flush=True)
 
-        # ── Normalisation — fitted on training fold only ──────────────────
         mean, std  = fit_normalizer(train)
         train_norm = apply_normalizer(train, mean, std)
         test_norm  = apply_normalizer(test,  mean, std)
 
-        # ── Hyperparameter sweep ──────────────────────────────────────────
         for target_length in target_length_options:
 
-            # Prepare tensors once per (fold, target_length) — reused across
-            # d_model values to avoid redundant resampling.
-            X_train, y_train, Y_train = _prepare_data(
+            X_train, _, Y_train = _prepare_data(
                 train_norm, target_length, n_classes, label_offset)
             X_test,  y_test,  _       = _prepare_data(
                 test_norm,  target_length, n_classes, label_offset)
 
             for d_model in d_model_options:
+                for num_layers in num_layers_options:
 
-                config_key = (target_length, d_model)
-                if config_key not in global_predictions:
-                    global_predictions[config_key] = {"y_true": [], "y_pred": []}
+                    config_key = (target_length, d_model, num_layers)
+                    if config_key not in global_predictions:
+                        global_predictions[config_key] = {"y_true": [], "y_pred": []}
 
-                # ── Model — rebuilt from scratch each fold ────────────────
-                tf.keras.backend.clear_session()
-                model = build_transformer_model(
-                    input_shape  = (target_length, X_train.shape[2]),
-                    n_classes    = n_classes,
-                    d_model      = d_model,
-                    dropout_rate = dropout_rate,
-                )
+                    tf.keras.backend.clear_session()
+                    model = build_transformer_model(
+                        input_shape  = (target_length, X_train.shape[2]),
+                        n_classes    = n_classes,
+                        d_model      = d_model,
+                        num_layers   = num_layers,
+                        dropout_rate = dropout_rate,
+                    )
 
-                early_stop = EarlyStopping(
-                    monitor              = "val_loss",
-                    patience             = 5,
-                    restore_best_weights = True,
-                    verbose              = 0,
-                )
+                    early_stop = EarlyStopping(
+                        monitor              = "val_loss",
+                        patience             = 5,
+                        restore_best_weights = True,
+                        verbose              = 0,
+                    )
 
-                # ── Training ──────────────────────────────────────────────
-                model.fit(
-                    X_train, Y_train,
-                    epochs           = epochs,
-                    batch_size       = batch_size,
-                    validation_split = validation_split,
-                    callbacks        = [early_stop],
-                    verbose          = 0,
-                )
+                    model.fit(
+                        X_train, Y_train,
+                        epochs           = epochs,
+                        batch_size       = batch_size,
+                        validation_split = validation_split,
+                        callbacks        = [early_stop],
+                        verbose          = 0,
+                    )
 
-                # ── Inference ─────────────────────────────────────────────
-                y_pred_prob     = model.predict(X_test, verbose=0)
-                y_pred          = np.argmax(y_pred_prob, axis=1)
-                y_pred_original = y_pred + label_offset
-                y_test_original = y_test + label_offset
+                    y_pred_prob     = model.predict(X_test, verbose=0)
+                    y_pred          = np.argmax(y_pred_prob, axis=1)
+                    y_pred_original = y_pred + label_offset
+                    y_test_original = y_test + label_offset
 
-                # ── Metrics ───────────────────────────────────────────────
-                accuracy = float(np.mean(y_pred_original == y_test_original))
+                    accuracy = float(np.mean(y_pred_original == y_test_original))
 
-                global_predictions[config_key]["y_true"].extend(
-                    y_test_original.tolist())
-                global_predictions[config_key]["y_pred"].extend(
-                    y_pred_original.tolist())
+                    global_predictions[config_key]["y_true"].extend(y_test_original.tolist())
+                    global_predictions[config_key]["y_pred"].extend(y_pred_original.tolist())
 
-                all_results.append({
-                    "fold_id":       fold_id,
-                    "n_components":  "N/A",   # no PCA in Transformer
-                    "n_clusters":    "N/A",   # no clustering
-                    "compression":   "N/A",
-                    "target_length": target_length,
-                    "d_model":       d_model,
-                    "k":             "N/A",
-                    "accuracy":      accuracy,
-                })
+                    all_results.append({
+                        "fold_id":       fold_id,
+                        "n_components":  "N/A",
+                        "n_clusters":    "N/A",
+                        "compression":   "N/A",
+                        "target_length": target_length,
+                        "d_model":       d_model,
+                        "num_layers":    num_layers,
+                        "k":             "N/A",
+                        "accuracy":      accuracy,
+                    })
 
-                print(f"    target_length={target_length}, d_model={d_model}"
-                      f"  →  accuracy={accuracy:.4f}")
+                    print(f"    target_length={target_length}, d_model={d_model},"
+                          f" num_layers={num_layers}  →  accuracy={accuracy:.4f}")
 
     return pd.DataFrame(all_results), global_predictions
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Convenience wrapper — mirrors run_bilstm_for_dataset from baseline_bilstm.py
+# Convenience wrapper
 # ─────────────────────────────────────────────────────────────────────────────
 
 def run_transformer_for_dataset(domain_name: str, gestures: list,
                                 cv_mode: str, output_dir: str = "results"):
     """
-    Run the full Transformer sweep for one (dataset, cv_mode) combination
-    and save the results. Call this from your __main__ block alongside
-    run_bilstm_for_dataset.
-
-    Parameters
-    ----------
-    domain_name : str  — e.g. "domain1" or "domain4"
-    gestures    : list — output of load_data_domain_1 / load_data_domain_4
-    cv_mode     : str  — "dependent" or "independent"
-    output_dir  : str  — folder where results are written (default: "results")
+    Run the full tensor2tensor-style Transformer sweep for one
+    (dataset, cv_mode) combination and save results.
     """
     from utils_saving import save_results
 
@@ -364,12 +387,14 @@ def run_transformer_for_dataset(domain_name: str, gestures: list,
         gestures              = gestures,
         target_length_options = [32, 64, 128],
         d_model_options       = [32, 64, 128],
+        num_layers_options    = [1, 2],
         cv_mode               = cv_mode,
         epochs                = 50,
         batch_size            = 16,
+        dropout_rate          = 0.1,
     )
 
-    group_cols  = ["target_length", "d_model"]
+    group_cols  = ["target_length", "d_model", "num_layers"]
     summary     = df.groupby(group_cols)["accuracy"].agg(["mean", "std"])
     best_config = summary["mean"].idxmax()
 
@@ -378,10 +403,8 @@ def run_transformer_for_dataset(domain_name: str, gestures: list,
           f"std={summary.loc[best_config, 'std']:.4f}")
 
     labels = sorted(set(g["gesture_type"] for g in gestures))
-    key    = best_config   # (target_length, d_model)
-
-    y_true = preds[key]["y_true"]
-    y_pred = preds[key]["y_pred"]
+    y_true = preds[best_config]["y_true"]
+    y_pred = preds[best_config]["y_pred"]
     cm     = confusion_matrix(y_true, y_pred, labels=labels)
 
     save_results(summary, best_config, cm, df,
@@ -404,7 +427,7 @@ if __name__ == "__main__":
     }
 
     for domain_name, gestures in datasets.items():
-        for cv_mode in ["dependent", "independent"]:
+        for cv_mode in ["independent"]:  # "dependent",
             run_transformer_for_dataset(domain_name, gestures,
                                         cv_mode, output_dir="results")
 
