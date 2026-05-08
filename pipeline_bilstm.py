@@ -16,15 +16,17 @@ Design decisions
 • Normalisation is fitted on the training set of each fold and applied to
   both train and test — consistent with data_preparation.py.
 
-• The function signature and return format of `run_pipeline` mirror
-  `run_pipeline` exactly so that the same `save_results` / `summary` code
-  works without modification.
-
-• A validation split (10 %) is taken from the training set inside each fold
-  to allow EarlyStopping to monitor generalisation rather than training loss.
+• Hyperparameter selection uses a two-phase protocol to prevent data leakage:
+    Phase 1 — HP search: a 20 % inner-validation split is carved out of the
+    training portion of each outer fold. All (target_length, n_units)
+    combinations are trained on the remaining 80 % and evaluated on the inner
+    val. The test user's data is NEVER seen during this phase.
+    Phase 2 — Final model: the best HP is then used to retrain a fresh model
+    on the FULL outer training set. This final model is evaluated on the held-
+    out test user.
 
 • Hyperparameters swept: target_length (resample resolution) and n_units
-  (BiLSTM hidden size). This mirrors the cluster / k sweep of the baseline.
+  (BiLSTM hidden size).
 
 Public API
 ----------
@@ -32,6 +34,8 @@ Public API
     build_bilstm_model(input_shape, n_classes, n_units, dropout_rate)
         → keras.Sequential
 """
+
+from collections import defaultdict
 
 import numpy as np
 import pandas as pd
@@ -44,7 +48,7 @@ from tensorflow.keras.utils import to_categorical
 from tensorflow.keras.callbacks import EarlyStopping
 
 from data_loading import load_data_domain_1, load_data_domain_4
-from data_splitting import user_dependent_cv, user_independent_cv
+from data_splitting import user_dependent_cv, user_independent_cv, inner_val_split
 from data_preparation import fit_normalizer, apply_normalizer
 from utils_saving import save_results
 
@@ -129,20 +133,83 @@ def build_bilstm_model(input_shape: tuple, n_classes: int,
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Pipeline helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _build_tensors(gestures: list, target_length: int,
+                   n_classes: int, label_offset: int):
+    """Convert gesture dicts to (X, y_int, Y_onehot) tensors."""
+    X = np.array([resample_trajectory(g["trajectory"], target_length)
+                   for g in gestures], dtype=np.float32)
+    y = np.array([g["gesture_type"] - label_offset for g in gestures],
+                 dtype=np.int32)
+    Y = to_categorical(y, num_classes=n_classes).astype(np.float32)
+    return X, y, Y
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Pipeline
 # ─────────────────────────────────────────────────────────────────────────────
 
 def run_pipeline(gestures, target_length_options, n_units_options,
                  cv_mode="dependent", epochs=50, batch_size=16,
-                 dropout_rate=0.3, validation_split=0.10):
-    all_results        = []
-    global_predictions = {}
+                 dropout_rate=0.3, val_fraction=0.20):
+    """
+    Two-phase cross-validated BiLSTM experiment.
 
+    Phase 1 — HP selection GLOBALE (inner val sur tous les folds)
+        Best HP = (target_length, n_units) avec la meilleure moyenne sur tous les folds.
+
+    Phase 2 — Final evaluation avec le best_hp FIXE sur tous les folds.
+    """
     all_types    = sorted(set(g["gesture_type"] for g in gestures))
     n_classes    = len(all_types)
-    label_offset = min(all_types)   # 0-indexed vs 1-indexed labels
-
+    label_offset = min(all_types)
     cv_fn = user_dependent_cv if cv_mode == "dependent" else user_independent_cv
+
+    # ── PHASE 1 : HP selection sur TOUS les folds ────────────────────
+    hp_scores = defaultdict(list)
+
+    for train, test, fold_id in cv_fn(gestures):
+        mean, std  = fit_normalizer(train)
+        train_norm = apply_normalizer(train, mean, std)
+        inner_train, inner_val = inner_val_split(train_norm, val_fraction)
+
+        for target_length in target_length_options:
+            X_it, _, Y_it    = _build_tensors(inner_train, target_length, n_classes, label_offset)
+            X_iv, y_iv, Y_iv = _build_tensors(inner_val,   target_length, n_classes, label_offset)
+
+            for n_units in n_units_options:
+                tf.keras.backend.clear_session()
+                model = build_bilstm_model(
+                    input_shape  = (target_length, X_it.shape[2]),
+                    n_classes    = n_classes,
+                    n_units      = n_units,
+                    dropout_rate = dropout_rate,
+                )
+                model.fit(
+                    X_it, Y_it,
+                    epochs          = epochs,
+                    batch_size      = batch_size,
+                    validation_data = (X_iv, Y_iv),
+                    callbacks       = [EarlyStopping(monitor="val_loss", patience=5,
+                                                     restore_best_weights=True, verbose=0)],
+                    verbose         = 0,
+                )
+                val_acc = float(np.mean(
+                    np.argmax(model.predict(X_iv, verbose=0), axis=1) == y_iv))
+                hp_scores[(target_length, n_units)].append(val_acc)
+
+    # ← EN DEHORS de la boucle
+    best_hp = max(hp_scores, key=lambda hp: np.mean(hp_scores[hp]))
+    best_val_acc_global = float(np.mean(hp_scores[best_hp]))
+    best_target_length, best_n_units = best_hp
+    print(f"  Global best HP: target_length={best_target_length}, n_units={best_n_units}")
+
+    # ── PHASE 2 : Evaluation finale avec best_hp FIXE ────────────────
+    all_results        = []
+    global_predictions = {"y_true": [], "y_pred": []}
 
     for train, test, fold_id in cv_fn(gestures):
         print(f"  Fold {fold_id}...", flush=True)
@@ -150,60 +217,47 @@ def run_pipeline(gestures, target_length_options, n_units_options,
         train_norm = apply_normalizer(train, mean, std)
         test_norm  = apply_normalizer(test,  mean, std)
 
-        for target_length in target_length_options:
-            # Resample once per (fold, target_length) — reused across n_units
-            X_train = np.array([resample_trajectory(g["trajectory"], target_length)
-                                 for g in train_norm], dtype=np.float32)
-            y_train = np.array([g["gesture_type"] - label_offset
-                                 for g in train_norm], dtype=np.int32)
-            Y_train = to_categorical(y_train, num_classes=n_classes).astype(np.float32)
+        x_train, _, y_train  = _build_tensors(train_norm, best_target_length, n_classes, label_offset)
+        x_test,  y_test,  _  = _build_tensors(test_norm,  best_target_length, n_classes, label_offset)
 
-            X_test  = np.array([resample_trajectory(g["trajectory"], target_length)
-                                 for g in test_norm], dtype=np.float32)
-            y_test  = np.array([g["gesture_type"] - label_offset
-                                 for g in test_norm], dtype=np.int32)
+        tf.keras.backend.clear_session()
+        model = build_bilstm_model(
+            input_shape  = (best_target_length, x_train.shape[2]),
+            n_classes    = n_classes,
+            n_units      = best_n_units,
+            dropout_rate = dropout_rate,
+        )
+        model.fit(
+            x_train, y_train,
+            epochs           = epochs,
+            batch_size       = batch_size,
+            validation_split = 0.10,
+            callbacks        = [EarlyStopping(monitor="val_loss", patience=5,
+                                              restore_best_weights=True, verbose=0)],
+            verbose          = 0,
+        )
 
-            for n_units in n_units_options:
-                config_key = (target_length, n_units)
-                if config_key not in global_predictions:
-                    global_predictions[config_key] = {"y_true": [], "y_pred": []}
+        y_pred_original = np.argmax(model.predict(x_test, verbose=0), axis=1) + label_offset
+        y_test_original = y_test + label_offset
+        
+        y_pred_train = np.argmax(model.predict(x_train, verbose=0), axis=1) + label_offset  # ← nouveau
+        y_train_orig = y_train + label_offset                                                # ← nouveau
+        train_acc    = float(np.mean(y_pred_train == y_train_orig))
 
-                # Rebuild from scratch each fold — no information leakage
-                tf.keras.backend.clear_session()
-                model = build_bilstm_model(
-                    input_shape  = (target_length, X_train.shape[2]),
-                    n_classes    = n_classes,
-                    n_units      = n_units,
-                    dropout_rate = dropout_rate,
-                )
+        accuracy = float(np.mean(y_pred_original == y_test_original))
+        global_predictions["y_true"].extend(y_test_original.tolist())
+        global_predictions["y_pred"].extend(y_pred_original.tolist())
+        all_results.append({
+            "fold_id":       fold_id,
+            "target_length": best_target_length,
+            "n_units":       best_n_units,
+            "train_accuracy": train_acc,
+            "val_accuracy":   best_val_acc_global,
+            "accuracy":      accuracy,
+        })
+        print(f"    Test accuracy = {accuracy:.4f}")
 
-                model.fit(
-                    X_train, Y_train,
-                    epochs           = epochs,
-                    batch_size       = batch_size,
-                    validation_split = validation_split,
-                    callbacks        = [EarlyStopping(monitor="val_loss", patience=5,
-                                                      restore_best_weights=True, verbose=0)],
-                    verbose          = 0,
-                )
-
-                y_pred          = np.argmax(model.predict(X_test, verbose=0), axis=1)
-                y_pred_original = y_pred  + label_offset
-                y_test_original = y_test  + label_offset
-
-                accuracy = float(np.mean(y_pred_original == y_test_original))
-                global_predictions[config_key]["y_true"].extend(y_test_original.tolist())
-                global_predictions[config_key]["y_pred"].extend(y_pred_original.tolist())
-                all_results.append({
-                    "fold_id":       fold_id,
-                    "target_length": target_length,
-                    "n_units":       n_units,
-                    "accuracy":      accuracy,
-                })
-                print(f"    target_length={target_length}, n_units={n_units}"
-                      f"  →  accuracy={accuracy:.4f}")
-
-    return pd.DataFrame(all_results), global_predictions
+    return pd.DataFrame(all_results), global_predictions, best_hp
 
 
 if __name__ == "__main__":
@@ -224,15 +278,23 @@ if __name__ == "__main__":
             config_label = f"{domain_name}_bilstm_{cv_mode}"
             print(f"\nRunning: {config_label}")
 
-            df, preds   = run_pipeline(gestures, target_length_options,
-                                       n_units_options, cv_mode)
-            summary     = df.groupby(GROUP_COLS)["accuracy"].agg(["mean", "std"])
-            best_config = summary["mean"].idxmax()
-            print(f"  Best config: {best_config}  mean={summary.loc[best_config,'mean']:.4f}")
+            df, preds, best_config = run_pipeline(
+                gestures, target_length_options, n_units_options, cv_mode
+            )
 
-            y_true = preds[best_config]["y_true"]
-            y_pred = preds[best_config]["y_pred"]
+            mean_acc = df["accuracy"].mean()
+            std_acc  = df["accuracy"].std()
+            print(f"  Best config: {best_config}")
+            print(f"  Mean accuracy : {mean_acc:.4f}")
+            print(f"  Std           : {std_acc:.4f}")
+
+            y_true = preds["y_true"]
+            y_pred = preds["y_pred"]
             cm = confusion_matrix(y_true, y_pred, labels=labels)
+            summary = df.groupby(["target_length", "n_units"])["accuracy"].agg(["mean", "std"])
+            print(f"  Train accuracy : {df['train_accuracy'].mean():.4f}")
+            print(f"  Val accuracy   : {df['val_accuracy'].mean():.4f}")
+            print(f"  Test accuracy  : {df['accuracy'].mean():.4f} ± {df['accuracy'].std():.4f}")
             save_results(summary, best_config, cm, df, config_label, output_dir="results")
 
     print("\nDone. Results saved in ./results/")

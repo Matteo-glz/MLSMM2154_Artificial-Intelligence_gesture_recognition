@@ -43,12 +43,14 @@ Public API (mirrors dollar_one.py exactly)
     recognize(candidate_traj, templates, n_points) → gesture_type (int)
 """
 
+from collections import defaultdict
+
 import numpy as np
 import pandas as pd
 from sklearn.metrics import confusion_matrix
 
 from data_loading import load_data_domain_1, load_data_domain_4
-from data_splitting import user_dependent_cv, user_independent_cv
+from data_splitting import user_dependent_cv, user_independent_cv, inner_val_split
 from data_preparation import (fit_normalizer, apply_normalizer,
                                fit_pca_per_gesture, apply_pca_per_gesture)
 from utils_saving import save_results
@@ -251,10 +253,44 @@ def recognize(candidate_traj: np.ndarray, templates: list,
 # Pipeline
 # ─────────────────────────────────────────────────────────────────────────────
 
-def run_pipeline(gestures, pca_options, n_points_options, cv_mode="dependent"):
-    all_results = []
-    global_predictions = {}
+def run_pipeline(gestures, pca_options, n_points_options,
+                 cv_mode="dependent", val_fraction=0.20):
+
     cv_fn = user_dependent_cv if cv_mode == "dependent" else user_independent_cv
+
+    # ── PHASE 1 : HP selection sur TOUS les folds ────────────────────
+    hp_scores = defaultdict(list)
+
+    for train, test, fold_id in cv_fn(gestures):
+        mean, std  = fit_normalizer(train)
+        train_norm = apply_normalizer(train, mean, std)
+        inner_train, inner_val = inner_val_split(train_norm, val_fraction)
+
+        for n_components in pca_options:
+            if n_components != "no_pca":
+                pca     = fit_pca_per_gesture(inner_train, n_components)
+                it_proc = apply_pca_per_gesture(inner_train, pca)
+                iv_proc = apply_pca_per_gesture(inner_val,   pca)
+            else:
+                it_proc = inner_train
+                iv_proc = inner_val
+
+            for n_points in n_points_options:
+                templates = build_templates(it_proc, n_points)
+                y_pred_iv = [recognize(g["trajectory"], templates, n_points) for g in iv_proc]
+                y_true_iv = [g["gesture_type"] for g in iv_proc]
+                val_acc   = float(np.mean(np.array(y_true_iv) == np.array(y_pred_iv)))
+                hp_scores[(n_components, n_points)].append(val_acc)
+
+    # ← ICI, EN DEHORS de la boucle
+    best_hp = max(hp_scores, key=lambda hp: np.mean(hp_scores[hp]))
+    best_val_acc_global = float(np.mean(hp_scores[best_hp]))
+    best_pca, best_n_points = best_hp
+    print(f"  Global best HP: pca={best_pca}, n_points={best_n_points}")
+
+    # ── PHASE 2 : Evaluation finale avec best_hp FIXE ────────────────
+    all_results = []
+    global_predictions = {"y_true": [], "y_pred": []}
 
     for train, test, fold_id in cv_fn(gestures):
         print(f"  Fold {fold_id}...", flush=True)
@@ -262,39 +298,39 @@ def run_pipeline(gestures, pca_options, n_points_options, cv_mode="dependent"):
         train_norm = apply_normalizer(train, mean, std)
         test_norm  = apply_normalizer(test,  mean, std)
 
-        for n_components in pca_options:
-            pca_label = n_components if n_components != "no_pca" else "no_pca"
-            if n_components != "no_pca":
-                pca        = fit_pca_per_gesture(train_norm, n_components=n_components)
-                train_proc = apply_pca_per_gesture(train_norm, pca)
-                test_proc  = apply_pca_per_gesture(test_norm,  pca)
-            else:
-                train_proc = train_norm
-                test_proc  = test_norm
+        if best_pca != "no_pca":
+            pca        = fit_pca_per_gesture(train_norm, n_components=best_pca)
+            train_proc = apply_pca_per_gesture(train_norm, pca)
+            test_proc  = apply_pca_per_gesture(test_norm,  pca)
+        else:
+            train_proc = train_norm
+            test_proc  = test_norm
 
-            for n_points in n_points_options:
-                y_true, y_pred = [], []
-                config_key = (pca_label, n_points)
-                if config_key not in global_predictions:
-                    global_predictions[config_key] = {"y_true": [], "y_pred": []}
+        templates = build_templates(train_proc, best_n_points)
+        y_true, y_pred = [], []
+        for test_g in test_proc:
+            pred = recognize(test_g["trajectory"], templates, best_n_points)
+            y_true.append(test_g["gesture_type"])
+            y_pred.append(pred)
 
-                templates = build_templates(train_proc, n_points)
-                for test_g in test_proc:
-                    pred = recognize(test_g["trajectory"], templates, n_points)
-                    y_true.append(test_g["gesture_type"])
-                    y_pred.append(pred)
+        y_true_train = [g["gesture_type"] for g in train_proc]
+        y_pred_train = [recognize(g["trajectory"], templates, best_n_points) for g in train_proc]  # ← nouveau
+        train_acc = float(np.mean(np.array(y_true_train) == np.array(y_pred_train)))  # ← nouveau
 
-                accuracy = np.mean(np.array(y_true) == np.array(y_pred))
-                global_predictions[config_key]["y_true"].extend(y_true)
-                global_predictions[config_key]["y_pred"].extend(y_pred)
-                all_results.append({
-                    "fold_id":      fold_id,
-                    "n_components": pca_label,
-                    "n_points":     n_points,
-                    "accuracy":     accuracy,
-                })
+        accuracy = float(np.mean(np.array(y_true) == np.array(y_pred)))
+        global_predictions["y_true"].extend(y_true)
+        global_predictions["y_pred"].extend(y_pred)
+        all_results.append({
+            "fold_id":      fold_id,
+            "n_components": best_pca,
+            "n_points":     best_n_points,
+            "train_accuracy": train_acc,
+            "val_accuracy":   best_val_acc_global,
+            "accuracy":     accuracy,
+        })
+        print(f"    Test accuracy = {accuracy:.4f}")
 
-    return pd.DataFrame(all_results), global_predictions
+    return pd.DataFrame(all_results), global_predictions, best_hp
 
 
 if __name__ == "__main__":
@@ -315,14 +351,24 @@ if __name__ == "__main__":
             config_label = f"{domain_name}_three-cent_{cv_mode}"
             print(f"\nRunning: {config_label}")
 
-            df, preds   = run_pipeline(gestures, pca_options, n_points_options, cv_mode)
-            summary     = df.groupby(GROUP_COLS)["accuracy"].agg(["mean", "std"])
-            best_config = summary["mean"].idxmax()
-            print(f"  Best config: {best_config}  mean={summary.loc[best_config,'mean']:.4f}")
+            df, preds, best_config = run_pipeline(
+                gestures, pca_options, n_points_options, cv_mode
+            )
 
-            y_true = preds[best_config]["y_true"]
-            y_pred = preds[best_config]["y_pred"]
+            mean_acc = df["accuracy"].mean()
+            std_acc  = df["accuracy"].std()
+            print(f"  Best config: {best_config}")
+            print(f"  Mean accuracy : {mean_acc:.4f}")
+            print(f"  Std           : {std_acc:.4f}")
+
+            y_true = preds["y_true"]
+            y_pred = preds["y_pred"]
             cm = confusion_matrix(y_true, y_pred, labels=labels)
+            summary = df.groupby(["n_components", "n_points"])["accuracy"].agg(["mean", "std"])
+            print(f"  Train accuracy : {df['train_accuracy'].mean():.4f}")
+            print(f"  Val accuracy   : {df['val_accuracy'].mean():.4f}")
+            print(f"  Test accuracy  : {df['accuracy'].mean():.4f} ± {df['accuracy'].std():.4f}")
             save_results(summary, best_config, cm, df, config_label, output_dir="results")
+
 
     print("\nDone. Results saved in ./results/")

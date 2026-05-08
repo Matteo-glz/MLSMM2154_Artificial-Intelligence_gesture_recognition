@@ -24,6 +24,9 @@ def save_results(summary, best_config, cm, df, config_label, output_dir="results
         f.write(f"BEST CONFIG: {best_config}\n")
         best_mean = summary.loc[best_config, "mean"]
         best_std  = summary.loc[best_config, "std"]
+        f.write(f"  Train accuracy : {df['train_accuracy'].mean():.4f}\n")
+        f.write(f"  Val accuracy   : {df['val_accuracy'].mean():.4f}\n")
+        f.write(f"  Test accuracy  : {df['accuracy'].mean():.4f} ± {df['accuracy'].std():.4f}\n")
         f.write(f"Mean accuracy : {best_mean:.4f}\n")
         f.write(f"Std           : {best_std:.4f}\n\n")
 
@@ -31,6 +34,7 @@ def save_results(summary, best_config, cm, df, config_label, output_dir="results
         f.write("-"*40 + "\n")
         f.write(np.array2string(cm, separator=", "))
         f.write("\n")
+
 
     # ── csv raw results ───────────────────────────────────────────────────
     csv_path = os.path.join(output_dir, f"{safe_label}_raw.csv")

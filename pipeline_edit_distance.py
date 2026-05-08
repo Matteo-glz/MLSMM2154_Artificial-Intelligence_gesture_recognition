@@ -2,10 +2,10 @@ import numpy as np
 import pandas as pd
 from sklearn.cluster import KMeans
 from sklearn.metrics import confusion_matrix
-from collections import Counter
+from collections import Counter, defaultdict
 
 from data_loading import load_data_domain_1, load_data_domain_4
-from data_splitting import user_dependent_cv, user_independent_cv
+from data_splitting import user_dependent_cv, user_independent_cv, inner_val_split
 from data_preparation import (fit_normalizer, apply_normalizer,
                                fit_pca_per_gesture, apply_pca_per_gesture)
 from utils_algorithms import edit_distance_fast
@@ -86,10 +86,60 @@ def predict_gesture_type_knn(test_gesture, train_gestures, k=3, use_clean=True):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def run_pipeline(gestures, k_options, pca_options, cluster_options,
-                 compression, cv_mode="dependent"):
-    all_results = []
-    global_predictions = {}
+                 compression, cv_mode="dependent", val_fraction=0.20):
+    """
+    Two-phase cross-validated edit-distance experiment.
+
+    Phase 1 — HP selection GLOBALE (inner val sur tous les folds)
+        Best HP = (n_components, n_clusters, k, compression) avec la meilleure moyenne.
+
+    Phase 2 — Final evaluation avec le best_hp FIXE sur tous les folds.
+    """
     cv_fn = user_dependent_cv if cv_mode == "dependent" else user_independent_cv
+
+    # ── PHASE 1 : HP selection sur TOUS les folds ────────────────────
+    hp_scores = defaultdict(list)
+
+    for train, test, fold_id in cv_fn(gestures):
+        mean, std  = fit_normalizer(train)
+        train_norm = apply_normalizer(train, mean, std)
+        inner_train, inner_val = inner_val_split(train_norm, val_fraction)
+
+        for n_components in pca_options:
+            if n_components != "no_pca":
+                pca     = fit_pca_per_gesture(inner_train, n_components=n_components)
+                it_proc = apply_pca_per_gesture(inner_train, pca)
+                iv_proc = apply_pca_per_gesture(inner_val,   pca)
+            else:
+                it_proc = inner_train
+                iv_proc = inner_val
+
+            for n_clusters in cluster_options:
+                kmeans = fit_kmeans(it_proc, n_clusters)
+                it_sym = apply_compression(apply_symbolic_transformation(it_proc, kmeans))
+                iv_sym = apply_compression(apply_symbolic_transformation(iv_proc, kmeans))
+
+                for k in k_options:
+                    for comp in compression:
+                        y_true_iv, y_pred_iv = [], []
+                        for g in iv_sym:
+                            pred = predict_gesture_type_knn(g, it_sym, k=k, use_clean=comp)
+                            y_true_iv.append(g["gesture_type"])
+                            y_pred_iv.append(pred)
+
+                        val_acc = float(np.mean(np.array(y_true_iv) == np.array(y_pred_iv)))
+                        hp_scores[(n_components, n_clusters, k, comp)].append(val_acc)
+
+    # ← EN DEHORS de la boucle
+    best_hp = max(hp_scores, key=lambda hp: np.mean(hp_scores[hp]))
+    best_val_acc_global = float(np.mean(hp_scores[best_hp]))
+    best_pca, best_nc, best_k, best_comp = best_hp
+    print(f"  Global best HP: pca={best_pca}, clusters={best_nc}, "
+          f"k={best_k}, comp={best_comp}")
+
+    # ── PHASE 2 : Evaluation finale avec best_hp FIXE ────────────────
+    all_results = []
+    global_predictions = {"y_true": [], "y_pred": []}
 
     for train, test, fold_id in cv_fn(gestures):
         print(f"  Fold {fold_id}...", flush=True)
@@ -97,46 +147,50 @@ def run_pipeline(gestures, k_options, pca_options, cluster_options,
         train_norm = apply_normalizer(train, mean, std)
         test_norm  = apply_normalizer(test,  mean, std)
 
-        for n_components in pca_options:
-            pca_label = n_components if n_components != "no_pca" else "no_pca"
-            if n_components != "no_pca":
-                pca        = fit_pca_per_gesture(train_norm, n_components=n_components)
-                train_proc = apply_pca_per_gesture(train_norm, pca)
-                test_proc  = apply_pca_per_gesture(test_norm,  pca)
-            else:
-                train_proc = train_norm
-                test_proc  = test_norm
+        if best_pca != "no_pca":
+            pca        = fit_pca_per_gesture(train_norm, n_components=best_pca)
+            train_proc = apply_pca_per_gesture(train_norm, pca)
+            test_proc  = apply_pca_per_gesture(test_norm,  pca)
+        else:
+            train_proc = train_norm
+            test_proc  = test_norm
 
-            for n_clusters in cluster_options:
-                kmeans    = fit_kmeans(train_proc, n_clusters)
-                train_sym = apply_compression(apply_symbolic_transformation(train_proc, kmeans))
-                test_sym  = apply_compression(apply_symbolic_transformation(test_proc,  kmeans))
+        kmeans    = fit_kmeans(train_proc, best_nc)
+        train_sym = apply_compression(apply_symbolic_transformation(train_proc, kmeans))
+        test_sym  = apply_compression(apply_symbolic_transformation(test_proc,  kmeans))
 
-                for k in k_options:
-                    for comp in compression:
-                        y_true, y_pred = [], []
-                        config_key = (pca_label, n_clusters, k, comp)
-                        if config_key not in global_predictions:
-                            global_predictions[config_key] = {"y_true": [], "y_pred": []}
+        y_true, y_pred = [], []
+        for test_g in test_sym:
+            pred = predict_gesture_type_knn(test_g, train_sym, k=best_k, use_clean=best_comp)
+            y_true.append(test_g["gesture_type"])
+            y_pred.append(pred)
 
-                        for test_g in test_sym:
-                            pred = predict_gesture_type_knn(test_g, train_sym, k=k, use_clean=comp)
-                            y_true.append(test_g["gesture_type"])
-                            y_pred.append(pred)
+        y_true_train, y_pred_train = [], []
+        for g in train_sym:                                                          # ← nouveau
+            pred = predict_gesture_type_knn(g, train_sym, k=best_k, use_clean=best_comp)
+            y_true_train.append(g["gesture_type"])
+            y_pred_train.append(pred)
+        train_acc = float(np.mean(np.array(y_true_train) == np.array(y_pred_train)))# ← nouveau
 
-                        accuracy = np.mean(np.array(y_true) == np.array(y_pred))
-                        global_predictions[config_key]["y_true"].extend(y_true)
-                        global_predictions[config_key]["y_pred"].extend(y_pred)
-                        all_results.append({
-                            "fold_id":      fold_id,
-                            "n_components": pca_label,
-                            "n_clusters":   n_clusters,
-                            "k":            k,
-                            "compression":  comp,
-                            "accuracy":     accuracy,
-                        })
 
-    return pd.DataFrame(all_results), global_predictions
+        accuracy = float(np.mean(np.array(y_true) == np.array(y_pred)))
+        global_predictions["y_true"].extend(y_true)
+        global_predictions["y_pred"].extend(y_pred)
+
+        
+        all_results.append({
+            "fold_id":      fold_id,
+            "n_components": best_pca,
+            "n_clusters":   best_nc,
+            "k":            best_k,
+            "compression":  best_comp,
+            "train_accuracy": train_acc,
+            "val_accuracy":   best_val_acc_global,
+            "accuracy":     accuracy,
+        })
+        print(f"    Test accuracy = {accuracy:.4f}")
+
+    return pd.DataFrame(all_results), global_predictions, best_hp
 
 
 if __name__ == "__main__":
@@ -159,15 +213,24 @@ if __name__ == "__main__":
             config_label = f"{domain_name}_edit-distance_{cv_mode}"
             print(f"\nRunning: {config_label}")
 
-            df, preds   = run_pipeline(gestures, k_options, pca_options,
-                                       cluster_options, compression, cv_mode)
-            summary     = df.groupby(GROUP_COLS)["accuracy"].agg(["mean", "std"])
-            best_config = summary["mean"].idxmax()
-            print(f"  Best config: {best_config}  mean={summary.loc[best_config,'mean']:.4f}")
+            df, preds, best_config = run_pipeline(
+                gestures, k_options, pca_options,
+                cluster_options, compression, cv_mode
+            )
 
-            y_true = preds[best_config]["y_true"]
-            y_pred = preds[best_config]["y_pred"]
+            mean_acc = df["accuracy"].mean()
+            std_acc  = df["accuracy"].std()
+            print(f"  Best config: {best_config}")
+            print(f"  Mean accuracy : {mean_acc:.4f}")
+            print(f"  Std           : {std_acc:.4f}")
+
+            y_true = preds["y_true"]
+            y_pred = preds["y_pred"]
             cm = confusion_matrix(y_true, y_pred, labels=labels)
+            summary = df.groupby(["n_components", "n_clusters", "k", "compression"])["accuracy"].agg(["mean", "std"])
+            print(f"  Train accuracy : {df['train_accuracy'].mean():.4f}")
+            print(f"  Val accuracy   : {df['val_accuracy'].mean():.4f}")
+            print(f"  Test accuracy  : {df['accuracy'].mean():.4f} ± {df['accuracy'].std():.4f}")
             save_results(summary, best_config, cm, df, config_label, output_dir="results")
 
     print("\nDone. Results saved in ./results/")

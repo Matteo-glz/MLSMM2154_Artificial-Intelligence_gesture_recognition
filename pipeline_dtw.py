@@ -1,9 +1,11 @@
+from collections import defaultdict
+
 import numpy as np
 import pandas as pd
 from sklearn.metrics import confusion_matrix
 
 from data_loading import load_data_domain_1, load_data_domain_4
-from data_splitting import user_dependent_cv, user_independent_cv
+from data_splitting import user_dependent_cv, user_independent_cv, inner_val_split
 from data_preparation import (fit_normalizer, apply_normalizer,
                                fit_pca_per_gesture, apply_pca_per_gesture)
 from utils_algorithms import compute_dtw_distance_c_speed
@@ -13,10 +15,66 @@ from utils_saving import save_results
 GROUP_COLS = ["n_components", "k"]
 
 
-def run_pipeline(gestures, k_options, pca_options, cv_mode="dependent"):
-    all_results = []
-    global_predictions = {}
+def _dtw_distance_cache(ref_gestures, query_gestures):
+    """Compute sorted DTW neighbour lists for every query gesture."""
+    cache = []
+    for qg in query_gestures:
+        dists = sorted(
+            [(compute_dtw_distance_c_speed(qg["trajectory"], rg["trajectory"]),
+              rg["gesture_type"])
+             for rg in ref_gestures],
+            key=lambda x: x[0]
+        )
+        cache.append((qg["gesture_type"], dists))
+    return cache
+
+
+def run_pipeline(gestures, k_options, pca_options,
+                 cv_mode="dependent", val_fraction=0.20):
+    """
+    Two-phase cross-validated DTW experiment.
+
+    Phase 1 — HP selection GLOBALE (inner val sur tous les folds)
+        Best HP = (n_components, k) avec la meilleure moyenne sur tous les folds.
+
+    Phase 2 — Final evaluation avec le best_hp FIXE sur tous les folds.
+    """
     cv_fn = user_dependent_cv if cv_mode == "dependent" else user_independent_cv
+
+    # ── PHASE 1 : HP selection sur TOUS les folds ────────────────────
+    hp_scores = defaultdict(list)
+
+    for train, test, fold_id in cv_fn(gestures):
+        mean, std  = fit_normalizer(train)
+        train_norm = apply_normalizer(train, mean, std)
+        inner_train, inner_val = inner_val_split(train_norm, val_fraction)
+
+        for n_components in pca_options:
+            if n_components != "no_pca":
+                pca     = fit_pca_per_gesture(inner_train, n_components=n_components)
+                it_proc = apply_pca_per_gesture(inner_train, pca)
+                iv_proc = apply_pca_per_gesture(inner_val,   pca)
+            else:
+                it_proc = inner_train
+                iv_proc = inner_val
+
+            cache_inner = _dtw_distance_cache(it_proc, iv_proc)
+
+            for k in k_options:
+                y_true_iv = [lbl for lbl, _ in cache_inner]
+                y_pred_iv = [majority_vote(d[:k]) for _, d in cache_inner]
+                val_acc   = float(np.mean(np.array(y_true_iv) == np.array(y_pred_iv)))
+                hp_scores[(n_components, k)].append(val_acc)
+
+    # ← EN DEHORS de la boucle
+    best_hp = max(hp_scores, key=lambda hp: np.mean(hp_scores[hp]))
+    best_val_acc_global = float(np.mean(hp_scores[best_hp]))
+    best_pca, best_k = best_hp
+    print(f"  Global best HP: pca={best_pca}, k={best_k}")
+
+    # ── PHASE 2 : Evaluation finale avec best_hp FIXE ────────────────
+    all_results = []
+    global_predictions = {"y_true": [], "y_pred": []}
 
     for train, test, fold_id in cv_fn(gestures):
         print(f"  Fold {fold_id}...", flush=True)
@@ -24,49 +82,40 @@ def run_pipeline(gestures, k_options, pca_options, cv_mode="dependent"):
         train_norm = apply_normalizer(train, mean, std)
         test_norm  = apply_normalizer(test,  mean, std)
 
-        for n_components in pca_options:
-            pca_label = n_components if n_components != "no_pca" else "no_pca"
-            if n_components != "no_pca":
-                pca        = fit_pca_per_gesture(train_norm, n_components=n_components)
-                train_proc = apply_pca_per_gesture(train_norm, pca)
-                test_proc  = apply_pca_per_gesture(test_norm,  pca)
-            else:
-                train_proc = train_norm
-                test_proc  = test_norm
+        if best_pca != "no_pca":
+            pca        = fit_pca_per_gesture(train_norm, n_components=best_pca)
+            train_proc = apply_pca_per_gesture(train_norm, pca)
+            test_proc  = apply_pca_per_gesture(test_norm,  pca)
+        else:
+            train_proc = train_norm
+            test_proc  = test_norm
 
-            # Compute DTW distances once, then sweep k by slicing the sorted list
-            distance_cache = []
-            for test_g in test_proc:
-                dists = sorted(
-                    [(compute_dtw_distance_c_speed(test_g["trajectory"], train_g["trajectory"]),
-                      train_g["gesture_type"])
-                     for train_g in train_proc],
-                    key=lambda x: x[0]
-                )
-                distance_cache.append((test_g["gesture_type"], dists))
+        cache_test = _dtw_distance_cache(train_proc, test_proc)
+        cache_train = _dtw_distance_cache(train_proc, train_proc)  # For majority vote on train set
 
-            for k in k_options:
-                y_true, y_pred = [], []
-                config_key = (pca_label, k)
-                if config_key not in global_predictions:
-                    global_predictions[config_key] = {"y_true": [], "y_pred": []}
+        y_true = [lbl for lbl, _ in cache_test]
+        y_pred = [majority_vote(d[:best_k]) for _, d in cache_test]
 
-                for true_label, sorted_dists in distance_cache:
-                    pred = majority_vote(sorted_dists[:k])
-                    y_true.append(true_label)
-                    y_pred.append(pred)
+        y_true_train = [lbl for lbl, _ in cache_train]
+        y_pred_train = [majority_vote(d[:best_k]) for _, d in cache_train]
+        train_acc = float(np.mean(np.array(y_true_train) == np.array(y_pred_train)))
 
-                accuracy = np.mean(np.array(y_true) == np.array(y_pred))
-                global_predictions[config_key]["y_true"].extend(y_true)
-                global_predictions[config_key]["y_pred"].extend(y_pred)
-                all_results.append({
-                    "fold_id":      fold_id,
-                    "n_components": pca_label,
-                    "k":            k,
-                    "accuracy":     accuracy,
-                })
+        accuracy = float(np.mean(np.array(y_true) == np.array(y_pred)))
+        global_predictions["y_true"].extend(y_true)
+        global_predictions["y_pred"].extend(y_pred)
+        all_results.append({
+            "fold_id":      fold_id,
+            "n_components": best_pca,
+            "k":            best_k,
+            "train_accuracy": train_acc,
+            "val_accuracy":   best_val_acc_global,
+            "accuracy":     accuracy,
 
-    return pd.DataFrame(all_results), global_predictions
+
+        })
+        print(f"    Test accuracy = {accuracy:.4f}")
+
+    return pd.DataFrame(all_results), global_predictions, best_hp
 
 
 if __name__ == "__main__":
@@ -87,14 +136,23 @@ if __name__ == "__main__":
             config_label = f"{domain_name}_dtw_{cv_mode}"
             print(f"\nRunning: {config_label}")
 
-            df, preds   = run_pipeline(gestures, k_options, pca_options, cv_mode)
-            summary     = df.groupby(GROUP_COLS)["accuracy"].agg(["mean", "std"])
-            best_config = summary["mean"].idxmax()
-            print(f"  Best config: {best_config}  mean={summary.loc[best_config,'mean']:.4f}")
+            df, preds, best_config = run_pipeline(
+                gestures, k_options, pca_options, cv_mode
+            )
 
-            y_true = preds[best_config]["y_true"]
-            y_pred = preds[best_config]["y_pred"]
+            mean_acc = df["accuracy"].mean()
+            std_acc  = df["accuracy"].std()
+            print(f"  Best config: {best_config}")
+            print(f"  Mean accuracy : {mean_acc:.4f}")
+            print(f"  Std           : {std_acc:.4f}")
+
+            y_true = preds["y_true"]
+            y_pred = preds["y_pred"]
             cm = confusion_matrix(y_true, y_pred, labels=labels)
+            summary = df.groupby(["n_components", "k"])["accuracy"].agg(["mean", "std"])
+            print(f"  Train accuracy : {df['train_accuracy'].mean():.4f}")
+            print(f"  Val accuracy   : {df['val_accuracy'].mean():.4f}")
+            print(f"  Test accuracy  : {df['accuracy'].mean():.4f} ± {df['accuracy'].std():.4f}")
             save_results(summary, best_config, cm, df, config_label, output_dir="results")
 
     print("\nDone. Results saved in ./results/")

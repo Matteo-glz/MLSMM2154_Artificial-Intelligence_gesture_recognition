@@ -1,4 +1,31 @@
 from collections import defaultdict
+import numpy as np
+
+
+def inner_val_split(train_gestures: list, val_fraction: float = 0.20,
+                    seed: int = 42):
+    """
+    Carve out an inner validation set from the training portion of an outer fold.
+
+    Used by all pipelines for hyperparameter selection — the outer test fold is
+    never touched during this step, so HP selection is unbiased.
+
+    Parameters
+    ----------
+    train_gestures : list — training gestures for the current outer fold
+    val_fraction   : float — fraction to hold out (default 0.20 = 20 %)
+    seed           : int — random seed for reproducibility
+
+    Returns
+    -------
+    inner_train : list — 80 % of train_gestures (used to fit / train)
+    inner_val   : list — 20 % of train_gestures (used to score HP candidates)
+    """
+    rng     = np.random.default_rng(seed)
+    indices = rng.permutation(len(train_gestures))
+    n_val   = max(1, int(len(train_gestures) * val_fraction))
+    return ([train_gestures[i] for i in indices[n_val:]],
+            [train_gestures[i] for i in indices[:n_val]])
 
 
 def user_independent_cv(gestures):
