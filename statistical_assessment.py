@@ -64,7 +64,6 @@ _METHOD_LABELS = {
     "dtw":           "DTW",
     "edit-distance": "Edit-Distance",
     "Three-cent":    "Three-Cent",
-    "bilstm_masked": "BiLSTM",   # from RNN_simplified.py  (preferred)
     "bilstm":        "BiLSTM",   # from baseline_bilstm.py (fallback)
 }
 
@@ -75,7 +74,6 @@ _CONFIG_COLS = {
     "dtw":           ["n_components", "k"],
     "edit-distance": ["n_components", "n_clusters", "compression", "k"],
     "Three-cent":    ["n_components", "n_points"],
-    "bilstm_masked": [],   # fixed architecture — one accuracy per fold
     "bilstm":        ["target_length", "n_units"],
 }
 

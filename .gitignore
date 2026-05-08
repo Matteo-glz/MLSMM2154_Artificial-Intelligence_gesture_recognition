@@ -7,4 +7,21 @@
 # Text files
 *.txt
 
+# images
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.pkl
+
+
 venv/
+__pycache__/
+*.pyc
+
+input/
+rapport/
+results/
+
+GestureData/
+

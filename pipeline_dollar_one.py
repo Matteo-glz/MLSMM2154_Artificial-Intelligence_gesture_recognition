@@ -1,5 +1,3 @@
-Initialization tool 
-
 """
 dollar_one.py
 ─────────────────────────────────────────────────────────────────────────────
@@ -20,21 +18,28 @@ Key design decisions vs. the original paper
   K from KNN is replaced by the "nearest template wins" logic that is
   intrinsic to $1 — no voting required.
 
-• The function signature and return format of `run_pipeline_dollar_one`
-  mirrors `run_pipeline` so results can be fed to the same
-  `save_results` / `summary` code you already have.
+• The function signature and return format of `run_pipeline` mirrors
+  `run_pipeline` so results can be fed to the same `save_results` /
+  `summary` code you already have.
 
 Public API
 ----------
-    build_templates(train_gestures, n_points)   → list of template dicts
-    recognize(candidate_traj, templates, n_points, size) → gesture_type (int)
-    run_pipeline_dollar_one(gestures, n_points_options, pca_options, cv_mode)
-        → (DataFrame, global_predictions)
+    build_templates(train_gestures, n_points)              → list of template dicts
+    recognize(candidate_traj, templates, n_points, size)   → gesture_type (int)
 """
 
 import numpy as np
-from collections import defaultdict
 import pandas as pd
+from sklearn.metrics import confusion_matrix
+
+from data_loading import load_data_domain_1, load_data_domain_4
+from data_splitting import user_dependent_cv, user_independent_cv
+from data_preparation import (fit_normalizer, apply_normalizer,
+                               fit_pca_per_gesture, apply_pca_per_gesture)
+from utils_saving import save_results
+
+GROUP_COLS = ["n_components", "n_points"]
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Internal geometry helpers
@@ -42,7 +47,7 @@ import pandas as pd
 
 def _path_length(points: np.ndarray) -> float:
     """Total arc-length of a polyline (works for 2-D or 3-D)."""
-    diffs = np.diff(points, axis=0)               # shape (n-1, dims)
+    diffs = np.diff(points, axis=0)
     return float(np.sum(np.linalg.norm(diffs, axis=1)))
 
 
@@ -62,32 +67,27 @@ def _resample(points: np.ndarray, n: int) -> np.ndarray:
     -------
     np.ndarray, shape (n, dims)
     """
-    total   = _path_length(points)
-    if total == 0:                                # degenerate gesture (single point)
+    total = _path_length(points)
+    if total == 0:
         return np.tile(points[0], (n, 1))
 
-    interval = total / (n - 1)                   # desired spacing between new points
+    interval = total / (n - 1)
     D        = 0.0
     new_pts  = [points[0].copy()]
 
     i = 1
     while i < len(points) and len(new_pts) < n:
         d = float(np.linalg.norm(points[i] - points[i - 1]))
-
         if D + d >= interval:
-            # Linear interpolation: place a new point at exactly `interval` distance
-            t  = (interval - D) / d
-            q  = points[i - 1] + t * (points[i] - points[i - 1])
+            t = (interval - D) / d
+            q = points[i - 1] + t * (points[i] - points[i - 1])
             new_pts.append(q)
-
-            # Insert q back so we can continue from it
             points = np.insert(points, i, q, axis=0)
             D = 0.0
         else:
             D += d
         i += 1
 
-    # Floating-point rounding may leave us one point short — duplicate the last
     while len(new_pts) < n:
         new_pts.append(points[-1].copy())
 
@@ -113,24 +113,21 @@ def _rotate_by(points: np.ndarray, theta: float) -> np.ndarray:
     Rotate points by `theta` radians around their centroid, in the XY-plane.
     The z-coordinate (if present) is left unchanged.
     """
-    c      = _centroid(points)
-    cos_t  = np.cos(theta)
-    sin_t  = np.sin(theta)
+    c     = _centroid(points)
+    cos_t = np.cos(theta)
+    sin_t = np.sin(theta)
 
-    rotated = points.copy()
-    dx = points[:, 0] - c[0]
-    dy = points[:, 1] - c[1]
-
+    rotated    = points.copy()
+    dx         = points[:, 0] - c[0]
+    dy         = points[:, 1] - c[1]
     rotated[:, 0] = dx * cos_t - dy * sin_t + c[0]
     rotated[:, 1] = dx * sin_t + dy * cos_t + c[1]
-    # z (index 2) is unchanged
     return rotated
 
 
 def _rotate_to_zero(points: np.ndarray) -> np.ndarray:
     """Rotate so that the indicative angle is at 0°."""
-    theta = _indicative_angle(points)
-    return _rotate_by(points, -theta)
+    return _rotate_by(points, -_indicative_angle(points))
 
 
 def _scale_to_square(points: np.ndarray, size: float) -> np.ndarray:
@@ -165,12 +162,10 @@ def _path_distance(a: np.ndarray, b: np.ndarray) -> float:
 def _distance_at_angle(points: np.ndarray, template: np.ndarray,
                        theta: float) -> float:
     """Rotate candidate by theta, then measure path-distance to template."""
-    rotated = _rotate_by(points, theta)
-    return _path_distance(rotated, template)
+    return _path_distance(_rotate_by(points, theta), template)
 
 
-# Golden Ratio constant
-_PHI = 0.5 * (-1.0 + np.sqrt(5.0))
+_PHI = 0.5 * (-1.0 + np.sqrt(5.0))   # Golden Ratio constant
 
 
 def _distance_at_best_angle(points: np.ndarray, template: np.ndarray,
@@ -184,7 +179,6 @@ def _distance_at_best_angle(points: np.ndarray, template: np.ndarray,
     """
     x1 = _PHI * theta_a + (1.0 - _PHI) * theta_b
     f1 = _distance_at_angle(points, template, x1)
-
     x2 = (1.0 - _PHI) * theta_a + _PHI * theta_b
     f2 = _distance_at_angle(points, template, x2)
 
@@ -258,10 +252,7 @@ def build_templates(train_gestures: list, n_points: int,
     Returns
     -------
     list of dicts, each containing:
-        'gesture_type'  : int
-        'gesture_name'  : str
-        'subject'       : int
-        'preprocessed'  : np.ndarray, shape (n_points, dims)
+        'gesture_type', 'gesture_name', 'subject', 'preprocessed'
     """
     templates = []
     for g in train_gestures:
@@ -313,174 +304,84 @@ def recognize(candidate_traj: np.ndarray, templates: list,
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Pipeline integration
+# Pipeline
 # ─────────────────────────────────────────────────────────────────────────────
-# Imports are kept here so that the module stays self-contained when pasted
-# into your project alongside the existing modules.
 
-def run_pipeline_dollar_one(
-        gestures: list,
-        n_points_options: list,   # replaces cluster_options — e.g. [32, 64, 128]
-        pca_options: list,        # same as existing pipeline — e.g. ["no_pca", 1, 2, 3]
-        cv_mode: str = "dependent",
-        size: float = _DEFAULT_SIZE,
-):
-    """
-    Run the full cross-validated $1 experiment.
-
-    Mirrors `run_pipeline` from your main module so that the same
-    `save_results` / `summary` code works unchanged.
-
-    Hyper-parameters swept
-    ----------------------
-    n_points  : number of resample points  (replaces n_clusters + K)
-    n_components : PCA components           (same as existing pipeline)
-
-    Note: $1 is a nearest-template classifier — there is no K to tune.
-    The result column 'k' is set to 1 for compatibility with save_results.
-
-    Returns
-    -------
-    df                : pd.DataFrame  — one row per (fold, n_components, n_points)
-    global_predictions: dict          — same structure as in run_pipeline
-    """
-    # Import your existing splitting functions
-    from data_splitting    import user_dependent_cv, user_independent_cv
-    from data_preparation  import (fit_normalizer, apply_normalizer,
-                                   fit_pca, apply_pca)
-
+def run_pipeline(gestures, pca_options, n_points_options,
+                 cv_mode="dependent", size: float = _DEFAULT_SIZE):
     all_results        = []
     global_predictions = {}
-
     cv_fn = user_dependent_cv if cv_mode == "dependent" else user_independent_cv
 
     for train, test, fold_id in cv_fn(gestures):
         print(f"  Fold {fold_id}...", flush=True)
+        mean, std  = fit_normalizer(train)
+        train_norm = apply_normalizer(train, mean, std)
+        test_norm  = apply_normalizer(test,  mean, std)
 
-        # ── Normalisation (fitted on train only) ──────────────────────────
-        mean, std    = fit_normalizer(train)
-        train_norm   = apply_normalizer(train, mean, std)
-        test_norm    = apply_normalizer(test,  mean, std)
-
-        # ── PCA sweep ─────────────────────────────────────────────────────
         for n_components in pca_options:
-            label = n_components if n_components != "no_pca" else "no_pca"
-
+            pca_label = n_components if n_components != "no_pca" else "no_pca"
             if n_components != "no_pca":
-                pca        = fit_pca(train_norm, n_components=n_components)
-                train_proc = apply_pca(train_norm, pca)
-                test_proc  = apply_pca(test_norm,  pca)
+                pca        = fit_pca_per_gesture(train_norm, n_components=n_components)
+                train_proc = apply_pca_per_gesture(train_norm, pca)
+                test_proc  = apply_pca_per_gesture(test_norm,  pca)
             else:
                 train_proc = train_norm
                 test_proc  = test_norm
 
-            # ── n_points sweep ────────────────────────────────────────────
             for n_points in n_points_options:
-
-                # Build templates once per (fold, pca, n_points)
-                # This is the $1 equivalent of fit_kmeans — all preprocessing
-                # (resample, rotate, scale, translate) is done here on the
-                # training gestures so recognition is fast at test time.
-                templates = build_templates(train_proc, n_points, size)
-
-                # ── Recognition ───────────────────────────────────────────
                 y_true, y_pred = [], []
-                config_key = (label, n_points)
-
+                config_key = (pca_label, n_points)
                 if config_key not in global_predictions:
                     global_predictions[config_key] = {"y_true": [], "y_pred": []}
 
+                # Build templates once per (fold, pca, n_points)
+                templates = build_templates(train_proc, n_points, size)
+
                 for test_g in test_proc:
-                    pred = recognize(test_g['trajectory'], templates,
-                                     n_points, size)
+                    pred = recognize(test_g['trajectory'], templates, n_points, size)
                     y_true.append(test_g['gesture_type'])
                     y_pred.append(pred)
 
                 accuracy = np.mean(np.array(y_true) == np.array(y_pred))
                 global_predictions[config_key]["y_true"].extend(y_true)
                 global_predictions[config_key]["y_pred"].extend(y_pred)
-
                 all_results.append({
                     "fold_id":      fold_id,
-                    "n_components": label,
+                    "n_components": pca_label,
                     "n_points":     n_points,
-                    "n_clusters":   "N/A",   # kept for save_results compatibility
-                    "k":            1,        # $1 is always nearest-1-template
-                    "compression":  "N/A",
                     "accuracy":     accuracy,
                 })
 
     return pd.DataFrame(all_results), global_predictions
 
 
-Run the pipeline : 
+if __name__ == "__main__":
+    PATH_DOMAIN_1 = "/Users/matteogalizia/Documents/GitHub/MLSMM2154_Artificial-Intelligence_gesture_recognition/GestureData/GestureDataDomain1_Mons/Domain1_csv"
+    PATH_DOMAIN_4 = "/Users/matteogalizia/Documents/GitHub/MLSMM2154_Artificial-Intelligence_gesture_recognition/GestureData/GestureDataDomain4_Mons"
 
-"""
-main_dollar_one_integration.py
-──────────────────────────────
-Drop-in addition to your existing __main__ block.
-Paste this AFTER your baseline loop (edit-distance / DTW).
-"""
-
-from dollar_one import run_pipeline_dollar_one
-from sklearn.metrics import confusion_matrix
-from saving_result import save_results
-from data_loading import load_data_domain_1, load_data_domain_4
-
-# ── Hyper-parameter grid for $1 ───────────────────────────────────────────────
-#   n_points replaces n_clusters.  Paper says N=64 is adequate; 32–256 is safe.
-#   PCA options stay the same as for the baselines.
-path_domain_1 = "/Users/matteogalizia/Documents/GitHub/MLSMM2154_Artificial-Intelligence_gesture_recognition/GestureData/GestureDataDomain1_Mons/Domain1_csv"
-path_domain_4 = "/Users/matteogalizia/Documents/GitHub/MLSMM2154_Artificial-Intelligence_gesture_recognition/GestureData/GestureDataDomain4_Mons"
-
-
-    # On which data we work 
-datasets = {
-        "domain1": load_data_domain_1(path_domain_1),
-        #"domain4": load_data_domain_4(path_domain_4),
+    datasets = {
+        "domain1": load_data_domain_1(PATH_DOMAIN_1),
+        "domain4": load_data_domain_4(PATH_DOMAIN_4),
     }
+    pca_options      = ["no_pca", 1, 2, 3]
+    n_points_options = [16, 32, 64, 128, 256]
+    cv_modes         = ["dependent", "independent"]
 
-dollar_one_params = {
-    "n_points_options": [32],#, 64, 128, 256],
-    "pca_options":      ["no_pca"]#, 1, 2, 3],
-}
+    for domain_name, gestures in datasets.items():
+        labels = sorted({g["gesture_type"] for g in gestures})
+        for cv_mode in cv_modes:
+            config_label = f"{domain_name}_dollar-one_{cv_mode}"
+            print(f"\nRunning: {config_label}")
 
-labels    = list(range(10))
-cv_modes  = ["dependent"]#, "independent"]
+            df, preds   = run_pipeline(gestures, pca_options, n_points_options, cv_mode)
+            summary     = df.groupby(GROUP_COLS)["accuracy"].agg(["mean", "std"])
+            best_config = summary["mean"].idxmax()
+            print(f"  Best config: {best_config}  mean={summary.loc[best_config,'mean']:.4f}")
 
-for domain_name, gestures in datasets.items():            # datasets defined above
-    for cv_mode in cv_modes:
+            y_true = preds[best_config]["y_true"]
+            y_pred = preds[best_config]["y_pred"]
+            cm = confusion_matrix(y_true, y_pred, labels=labels)
+            save_results(summary, best_config, cm, df, config_label, output_dir="results")
 
-        config_label = f"{domain_name}_dollar_one_{cv_mode}"
-        print(f"\nRunning: {config_label}")
-
-        df, preds = run_pipeline_dollar_one(
-            gestures          = gestures,
-            n_points_options  = dollar_one_params["n_points_options"],
-            pca_options       = dollar_one_params["pca_options"],
-            cv_mode           = cv_mode,
-        )
-
-        # ── Summary (mirrors your baseline summary block) ─────────────────
-        group_cols  = ["n_components", "n_points"]
-        summary     = df.groupby(group_cols)["accuracy"].agg(["mean", "std"])
-        best_config = summary["mean"].idxmax()
-
-        print(f"  Best config: {best_config}  "
-              f"mean={summary.loc[best_config, 'mean']:.4f}  "
-              f"std={summary.loc[best_config, 'std']:.4f}")
-
-        # ── Confusion matrix ──────────────────────────────────────────────
-        pca_label = best_config[0]
-        n_points  = best_config[1]
-        key       = (pca_label, n_points)
-
-        y_true = preds[key]["y_true"]
-        y_pred = preds[key]["y_pred"]
-        cm     = confusion_matrix(y_true, y_pred, labels=labels)
-
-        save_results(summary, best_config, cm, df, config_label,
-                     output_dir="results")
-
-print("\nAll done — $1 results saved in ./results/")
-
+    print("\nDone. Results saved in ./results/")
