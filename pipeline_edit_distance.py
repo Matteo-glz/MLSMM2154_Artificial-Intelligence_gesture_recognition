@@ -202,8 +202,8 @@ if __name__ == "__main__":
         "domain4": load_data_domain_4(PATH_DOMAIN_4),
     }
     k_options       = [1, 3, 5, 7]
-    pca_options     = ["no_pca", 1, 2, 3]
-    cluster_options = [5, 7, 9, 11, 13, 15, 17, 19, 21]
+    pca_options     = ["no_pca", 2, 3]
+    cluster_options = [15, 20, 25, 30, 35, 40]#, 45, 50, 55, 60]
     compression     = [True, False]
     cv_modes        = ["dependent", "independent"]
 

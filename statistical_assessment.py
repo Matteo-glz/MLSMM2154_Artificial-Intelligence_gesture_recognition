@@ -166,9 +166,9 @@ def _resolve_bilstm_csv(domain_id: int, cv_mode: str, results_dir: str) -> tuple
     """
     # Preferred: output of RNN_simplified.py (padding + masking)
     masked = os.path.join(results_dir,
-                          f"domain{domain_id}_bilstm_masked_{cv_mode}_raw.csv")
+                          f"domain{domain_id}_bilstm{cv_mode}_raw.csv")
     if os.path.exists(masked):
-        return masked, "bilstm_masked"
+        return masked, "bilstm_"
 
     # Fallback: output of baseline_bilstm.py (resampling)
     old = os.path.join(results_dir,
@@ -236,7 +236,7 @@ def _build_accuracy_matrix(
     # BiLSTM
     bilstm_csv, bilstm_key = _resolve_bilstm_csv(domain_id, cv_mode, results_dir)
     bilstm_accs, bilstm_cfg = _load_best_fold_accuracies(bilstm_csv)
-    columns[_METHOD_LABELS["bilstm_masked"]] = bilstm_accs
+    columns[_METHOD_LABELS["bilstm"]] = bilstm_accs
     best_configs["bilstm"] = bilstm_cfg
 
     # Verify all methods have the same number of folds

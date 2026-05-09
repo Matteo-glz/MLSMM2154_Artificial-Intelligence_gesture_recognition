@@ -127,7 +127,7 @@ if __name__ == "__main__":
         "domain4": load_data_domain_4(PATH_DOMAIN_4),
     }
     k_options   = [1, 3, 5, 7]
-    pca_options = ["no_pca", 1, 2, 3]
+    pca_options = ["no_pca", 2, 3]
     cv_modes    = ["dependent", "independent"]
 
     for domain_name, gestures in datasets.items():

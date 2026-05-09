@@ -341,8 +341,8 @@ if __name__ == "__main__":
         "domain1": load_data_domain_1(PATH_DOMAIN_1),
         "domain4": load_data_domain_4(PATH_DOMAIN_4),
     }
-    pca_options      = ["no_pca", 1, 2, 3]
-    n_points_options = [16, 32, 64, 128, 256]
+    pca_options      = ["no_pca", 2, 3]
+    n_points_options = [16, 32, 64]#, 128, 256]
     cv_modes         = ["dependent", "independent"]
 
     for domain_name, gestures in datasets.items():
