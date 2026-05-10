@@ -13,13 +13,12 @@ PATH_DOMAIN_1 = "/Users/matteogalizia/Documents/GitHub/MLSMM2154_Artificial-Inte
 PATH_DOMAIN_4 = "/Users/matteogalizia/Documents/GitHub/MLSMM2154_Artificial-Intelligence_gesture_recognition/GestureData/GestureDataDomain4_Mons"
 
 K_OPTIONS             = [1, 3, 5, 7]
-PCA_OPTIONS           = ["no_pca", 1, 2, 3]
-CLUSTER_OPTIONS       = [5, 7, 9, 11, 13, 15, 17, 19, 21]
-COMPRESSION           = [True, False]
-N_POINTS_OPTIONS      = [16, 32, 64, 128, 256]
-TARGET_LENGTH_OPTIONS = [32, 64, 128]
-N_UNITS_OPTIONS       = [32, 64, 128]
-D_MODEL_OPTIONS       = [32, 64, 128]
+PCA_OPTIONS           = ["no_pca", 2, 3]
+CLUSTER_OPTIONS       = [15, 20, 25, 30, 35, 40]#, 45, 50, 55, 60] # for edit-distance method
+COMPRESSION           = [True, False] #  for edit-distance method
+N_POINTS_OPTIONS      = [16, 32, 64], #128, 256] # for three-centroid method
+TARGET_LENGTH_OPTIONS = [16, 32, 64]#, 128]
+N_UNITS_OPTIONS       = [16, 32, 64]#, 128]
 CV_MODES              = ["dependent", "independent"]
 
 
