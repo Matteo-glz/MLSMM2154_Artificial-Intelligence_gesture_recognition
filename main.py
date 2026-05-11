@@ -1,12 +1,12 @@
 from sklearn.metrics import confusion_matrix
 
-from data_loading import load_data_domain_1, load_data_domain_4
-from utils_saving import save_results
+from data.data_loading import load_data_domain_1, load_data_domain_4
+from utils.utils_saving import save_results
 
-import pipeline_edit_distance
-import pipeline_dtw
-import pipeline_three_cent
-import pipeline_bilstm
+from pipelines import pipeline_edit_distance
+from pipelines import pipeline_dtw
+from pipelines import pipeline_three_cent
+from pipelines import pipeline_bilstm
 
 
 PATH_DOMAIN_1 = "/Users/matteogalizia/Documents/GitHub/MLSMM2154_Artificial-Intelligence_gesture_recognition/GestureData/GestureDataDomain1_Mons/Domain1_csv"

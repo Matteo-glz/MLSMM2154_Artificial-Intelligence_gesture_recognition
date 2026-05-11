@@ -586,7 +586,7 @@ def fig_baseline_knn_comparison(gestures, kmeans: KMeans,
     # ── Edit-distance neighbours ──────────────────────────────────────────────
     train_sym = apply_compression(apply_symbolic_transformation(train_gs, kmeans))
     test_sym  = apply_compression(apply_symbolic_transformation([test_g], kmeans))[0]
-    from utils_algorithms import edit_distance_fast
+    from utils.utils_algorithms import edit_distance_fast
     ed_dists  = sorted([(edit_distance_fast(test_sym["seq_clean"], tg["seq_clean"]),
                           tg) for tg in train_sym], key=lambda x: x[0])
     ed_nn     = [g for _,g in ed_dists[:k]]

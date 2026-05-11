@@ -1,5 +1,6 @@
 import os
 import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
@@ -7,9 +8,9 @@ from sklearn.manifold import MDS
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from data_loading import load_data_domain_1, load_data_domain_4
-from data_preparation import fit_normalizer, apply_normalizer
-from utils_algorithms import compute_dtw_distance_c_speed
+from data.data_loading import load_data_domain_1, load_data_domain_4
+from data.data_preparation import fit_normalizer, apply_normalizer
+from utils.utils_algorithms import compute_dtw_distance_c_speed
 
 # ─────────────────────── CONFIG ──────────────────────────────────────────────
 PATH_DOMAIN_1 = r"C:\Users\PC\Documents\GitHub\MLSMM2154_Artificial-Intelligence_gesture_recognition\GestureData_Mons\GestureDataDomain1_Mons\Domain1_csv"

@@ -1,15 +1,18 @@
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import numpy as np
 import pandas as pd
 from sklearn.cluster import KMeans
 from sklearn.metrics import confusion_matrix
 from collections import Counter, defaultdict
 
-from data_loading import load_data_domain_1, load_data_domain_4
-from data_splitting import user_dependent_cv, user_independent_cv, inner_val_split
-from data_preparation import (fit_normalizer, apply_normalizer,
+from data.data_loading import load_data_domain_1, load_data_domain_4
+from data.data_splitting import user_dependent_cv, user_independent_cv, inner_val_split
+from data.data_preparation import (fit_normalizer, apply_normalizer,
                                fit_pca_per_gesture, apply_pca_per_gesture)
-from utils_algorithms import edit_distance_fast
-from utils_saving import save_results
+from utils.utils_algorithms import edit_distance_fast
+from utils.utils_saving import save_results
 
 GROUP_COLS = ["n_components", "n_clusters", "k", "compression"]
 
