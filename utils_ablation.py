@@ -28,16 +28,16 @@ import pandas as pd
 import tensorflow as tf
 from tensorflow.keras.callbacks import EarlyStopping
 
-from data_loading import load_data_domain_1, load_data_domain_4
-from data_splitting import user_dependent_cv, user_independent_cv, inner_val_split
-from data_preparation import (fit_normalizer, apply_normalizer,
+from data.data_loading import load_data_domain_1, load_data_domain_4
+from data.data_splitting import user_dependent_cv, user_independent_cv, inner_val_split
+from data.data_preparation import (fit_normalizer, apply_normalizer,
                                fit_pca_per_gesture, apply_pca_per_gesture)
-from utils_algorithms import compute_dtw_distance_c_speed
-from utils_assessment import majority_vote
+from utils.utils_algorithms import compute_dtw_distance_c_speed
+from utils.utils_assessment import majority_vote
 
-import pipeline_edit_distance as ped
-import pipeline_three_cent    as ptc
-import pipeline_bilstm        as pbl
+import pipelines.pipeline_edit_distance as ped
+import pipelines.pipeline_three_cent    as ptc
+import pipelines.pipeline_bilstm        as pbl
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Paths
