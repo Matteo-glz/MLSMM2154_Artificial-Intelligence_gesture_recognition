@@ -1,0 +1,170 @@
+% !TEX root = main.tex
+
+
+This section describes the data preprocessing, cross-validation protocols,
+hyperparameter selection, and experimental setup used to evaluate the four
+gesture recognition methods.
+ 
+% ----------------------------------------------------------------
+\subsection{Data preprocessing}
+% ----------------------------------------------------------------
+ 
+All gestures were loaded from the raw data files and preprocessed in a
+consistent manner across methods. The preprocessing pipeline consisted of three
+main steps:
+ 
+\paragraph{Normalization.} Each gesture trajectory was normalized using
+standardization (z-score normalization) computed exclusively on the training
+set to prevent data leakage. For each fold, the mean $\boldsymbol{\mu}$ and
+standard deviation $\boldsymbol{\sigma}$ were calculated from all training
+gesture points, and then applied uniformly to both training and test sets:
+\begin{equation}
+    \mathbf{r}^{\text{norm}}_i = \frac{\mathbf{r}_i - \boldsymbol{\mu}}{\boldsymbol{\sigma}} .
+\end{equation}
+This removes scale and location artifacts, ensuring that all methods operate on
+gesture trajectories with zero mean and unit variance.
+ 
+\paragraph{Dimensionality reduction (optional).} To assess the effect of
+dimensionality reduction, we optionally applied Principal Component Analysis
+(PCA) to the training set before classification. PCA was fit only on the
+training data and the resulting transformation was applied to both training and
+test sets. We tested PCA with $n_{\text{components}} \in \{2, 3\}$ as well
+as the baseline (no PCA, keeping all 3 dimensions). For gestures with
+variable-length trajectories, PCA was applied point-wise, preserving the
+temporal structure.
+ 
+\paragraph{Variable-length handling.} Gesture trajectories in both domains
+exhibit variable length (number of points). For methods requiring fixed-length
+input (Three-Cents recognizer), resampling into a fixed number of equidistant
+points was performed as part of the method-specific preprocessing (described
+below). DTW and Edit-distance handle variable-length sequences natively without
+modification.
+ 
+% ----------------------------------------------------------------
+\subsection{Vector quantization for edit-distance}
+% ----------------------------------------------------------------
+ 
+The Edit-distance baseline requires discrete symbolic sequences rather than
+continuous coordinates. We converted each trajectory into a sequence of cluster
+labels using $k$-means clustering, following the project guidelines.
+ 
+\paragraph{Clustering procedure.} For each fold, $k$-means clustering was fit on
+all training gesture points (pooled across all gestures and users) with a fixed
+random seed (42) for reproducibility. We tested cluster counts
+$K \in \{15, 20, 25, 30, 35, 40, 45, 50, 55, 60\}$ to identify the optimal
+discretization granularity. After fitting, each point in both training and test
+sets was assigned to the nearest cluster centroid, transforming each gesture
+into a string of cluster labels (e.g., $A \to A \to B \to C \to \dots$).
+ 
+\paragraph{Compression.} We also tested an optional compression step that
+removed consecutive duplicate symbols (e.g., $A \to A \to B$ becomes
+$A \to B$), reducing edit-distance sensitivity to repetitive gestures. This
+was tested as a binary option: compression enabled or disabled.
+ 
+% ----------------------------------------------------------------
+\subsection{Cross-validation and hyperparameter selection}
+% ----------------------------------------------------------------
+ 
+All methods were evaluated using two complementary cross-validation protocols to
+assess both user-independence and generalization within users.
+ 
+\paragraph{User-independent evaluation.} We performed leave-one-user-out
+cross-validation: for each of the 10 subjects in turn, we held out all gestures
+from that subject as the test set and trained on all gestures from the
+remaining 9 subjects. This was repeated 10 times (once per subject), yielding
+10 accuracy measurements per method/domain/hyperparameter combination.
+ 
+\paragraph{User-dependent evaluation.} We performed leave-one-gesture-sample-out
+cross-validation: for each user and each gesture type, we iteratively held out
+one sample (repetition) as the test set, reserving the other 9 repetitions from
+that user for training. This was repeated 10 times (once per repetition index),
+again yielding 10 accuracy measurements per configuration.
+ 
+\paragraph{Inner validation split for hyperparameter selection.}
+To avoid any information leakage from the outer test fold into the
+hyperparameter search, we introduced a nested validation step. Within each outer
+fold, the training portion is further split randomly into an \emph{inner
+training} set (80\,\%) and an \emph{inner validation} set (20\,\%), using a
+fixed random seed (42) for reproducibility:
+\begin{equation}
+    \mathcal{D}_{\text{train}}^{\text{outer}}
+    \;\xrightarrow{\;80 / 20\;}\;
+    \mathcal{D}_{\text{inner-train}} \;\cup\; \mathcal{D}_{\text{inner-val}} .
+\end{equation}
+All preprocessing statistics (mean, standard deviation, $k$-means centroids,
+PCA components) and the method parameters are fitted \emph{exclusively} on
+$\mathcal{D}_{\text{inner-train}}$. Candidate hyperparameter configurations are
+then scored on $\mathcal{D}_{\text{inner-val}}$. The outer test fold is thus
+\emph{never} seen during hyperparameter selection, ensuring an unbiased
+performance estimate. Once the best configuration is identified, the full outer
+training set $\mathcal{D}_{\text{train}}^{\text{outer}}$ is used for the final
+model fit before evaluating on the held-out test fold.
+
+\paragraph{Hyperparameter grid search.} Within each outer fold, we performed a
+grid search over the inner validation set, covering hyperparameters specific to
+each method:
+
+\begin{itemize}\itemsep 0em
+    \item \textbf{Edit-distance:} $K \in \{15, 20, 25, 30, 35, 40, 45, 50, 55, 60\}$ (cluster count),
+    compression $\in \{\text{True, False}\}$, and $k \in \{1, 3, 5, 7\}$ for
+    $k$-NN.
+
+    \item \textbf{DTW:} $k \in \{1, 3, 5, 7\}$ for $k$-NN; no method-specific
+    hyperparameters.
+
+    \item \textbf{Three-Cents:} resampling to $n_{\text{points}}
+    \in \{16, 32, 64\}$ equidistant points.
+
+    \item \textbf{PCA:} $n_{\text{components}} \in \{\text{no PCA}, 2, 3\}$
+    applied to all methods.
+\end{itemize}
+
+For each outer fold, we computed inner-validation accuracy for all
+hyperparameter combinations. The best configuration per
+(method, domain, cv\_mode) tuple was selected by maximizing mean inner-validation
+accuracy across folds, and then applied to the corresponding outer test fold.
+ 
+% ----------------------------------------------------------------
+\subsection{Classification and distance metrics}
+% ----------------------------------------------------------------
+ 
+\paragraph{$k$-Nearest neighbors (\textit{k}-NN).} DTW and Edit-distance both use
+$k$-NN for classification. For each test gesture, we computed distances to all
+training gestures, sorted the results, and assigned the test gesture the
+majority-vote label among its $k$ nearest neighbors. We tested $k \in \{1, 3,
+5, 7\}$ to balance between local (small $k$) and global (large $k$)
+neighborhood effects.
+ 
+\paragraph{Distance computation.} For DTW, we used the accumulated dynamic
+programming distance $D(N, M)$ as the distance metric. For Edit-distance, we
+used the Levenshtein edit distance computed via dynamic programming. For
+Three-Cents, we used the average point-to-point Euclidean distance.
+ 
+\paragraph{Three-Cents 1-NN.} The Three-Cents recognizer uses 1-nearest-neighbor
+by design; the $k$ parameter was fixed at 1 for this method.
+ 
+% ----------------------------------------------------------------
+\subsection{Implementation details and reproducibility}
+% ----------------------------------------------------------------
+ 
+All methods were implemented in Python 3 using NumPy for numerical computation.
+DTW and Edit-distance distance computations were implemented from scratch
+(without external gesture recognition libraries) as required by the project
+guidelines. PCA and $k$-means clustering were sourced from scikit-learn.
+ 
+\paragraph{Random seeds.} The $k$-means clustering algorithm was initialized
+with random seed 42, and 10 different centroid initializations were tested per
+fold (n\_init=10) to ensure robust cluster center identification.
+ 
+\paragraph{Data leakage prevention.} Critical to the experimental integrity:
+normalization statistics (mean, std) and clustering centroids were learned
+\emph{only} from training data and applied to test data, preventing information
+leakage from test to train.
+ 
+\paragraph{Metrics.} Classification accuracy was computed as the proportion of
+correct predictions:
+\begin{equation}
+    \text{Accuracy} = \frac{\text{Number of correct predictions}}{\text{Total number of test samples}} .
+\end{equation}
+For each configuration, we report mean accuracy and standard deviation across
+the 10 cross-validation folds.

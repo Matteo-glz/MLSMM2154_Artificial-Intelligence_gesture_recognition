@@ -1,0 +1,40 @@
+% !TEX root = main.tex
+
+The development of natural user interfaces has fostered a growing interest in
+hand gesture recognition as a means of interaction between humans and machines.
+Gestures, being rapidly executed freehand drawings
+\cite{Huang2019}, exhibit a strong inherent variability: two instances of the
+same gesture produced by the same user may differ in speed, scale, spatial
+position, and duration. The sequential nature of the signal and this variability
+are the main challenges any recognizer must address.
+
+In this work we consider the problem of classifying three-dimensional gesture
+trajectories recorded as a sequence of spatial coordinates. Following the
+project guidelines, we assume constant time steps ($t = 1, 2, 3, \dots$) and
+ignore the precise sampling instants. Four classifiers are implemented and
+compared:
+\begin{enumerate}\itemsep 0em
+    \item Dynamic Time Warping (DTW) as a first baseline, combined with
+    a $k$-nearest-neighbors ($k$-NN) classifier;
+    \item Edit-distance on quantized symbolic sequences, as a second
+    baseline;
+    \item The Three-Cents ($3\mathbb{c}$) recognizer, a 3D extension of the
+    \$1 recognizer~\cite{Wobbrock2007};
+    \item A Recurrent Neural Network (RNN) trained end-to-end.
+\end{enumerate}
+
+Each method is evaluated on two datasets from~\cite{Huang2019} under both a
+\emph{user-independent} and a \emph{user-dependent} cross-validation protocol.
+The research questions underlying this project are threefold: (Q1)~\emph{how do
+classical template-matching baselines compare with more recent recognizers on
+3D mid-air gestures?}; (Q2)~\emph{do user-independent settings systematically
+degrade accuracy, as expected?}; and (Q3)~\emph{is one of the investigated
+classifiers significantly better than the others in the user-independent
+setting?}
+
+The remainder of the report is organized as follows. Section~\ref{sec:data}
+describes the datasets. Section~\ref{sec:theory} develops the theoretical
+framework of the four methods. Section~\ref{sec:impl} outlines the
+implementation and evaluation methodology. Section~\ref{sec:results} presents
+and discusses the experimental results, and Section~\ref{sec:conclusion}
+concludes.

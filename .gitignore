@@ -13,6 +13,16 @@
 *.jpeg
 *.gif
 *.pkl
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.toc
+*.synctex.gz
+*.fdb_latexmk
+*.fls
+
 
 
 venv/
@@ -20,7 +30,7 @@ __pycache__/
 *.pyc
 
 input/
-rapport/
+
 results/
 
 GestureData/

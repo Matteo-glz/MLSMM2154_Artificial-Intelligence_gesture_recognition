@@ -1,0 +1,21 @@
+% !TEX root = main.tex
+
+All the data used in this project come from the experiment of
+Huang~et~al.~\cite{Huang2019}. The complete dataset comprises four domains of
+ten gestures each, each gesture being performed ten times by ten different
+subjects, for a total of $10 \times 10 \times 10 = 1000$ samples per domain. In
+this work we focus on two of these domains:
+\begin{itemize}\itemsep 0em
+    \item Domain 1 :  hand-drawn representations of the digits
+    $\{0, 1, \dots, 9\}$ in 3D;
+    \item Domain 4 : 3D geometric figures.
+\end{itemize}
+
+Each gesture is recorded as a finite sequence of 3D position vectors
+\begin{equation}
+    \mathbf{r}(t) = [x(t), y(t), z(t)]^{\top} \in \mathbb{R}^{3},
+    \quad t = 1, 2, \dots, T_i ,
+\end{equation}
+where $T_i$ is the length of the $i$-th sample and may vary across recordings.
+As stated in the project guidelines, the discrete time index is treated as
+uniform, even though this assumption is not strictly satisfied in practice.
