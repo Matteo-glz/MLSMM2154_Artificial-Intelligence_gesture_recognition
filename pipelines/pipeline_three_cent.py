@@ -316,10 +316,6 @@ def run_pipeline(gestures, pca_options, n_points_options,
             y_true.append(test_g["gesture_type"])
             y_pred.append(pred)
 
-        y_true_train = [g["gesture_type"] for g in train_proc]
-        y_pred_train = [recognize(g["trajectory"], templates, best_n_points) for g in train_proc]  # ← nouveau
-        train_acc = float(np.mean(np.array(y_true_train) == np.array(y_pred_train)))  # ← nouveau
-
         accuracy = float(np.mean(np.array(y_true) == np.array(y_pred)))
         global_predictions["y_true"].extend(y_true)
         global_predictions["y_pred"].extend(y_pred)
@@ -327,7 +323,6 @@ def run_pipeline(gestures, pca_options, n_points_options,
             "fold_id":      fold_id,
             "n_components": best_pca,
             "n_points":     best_n_points,
-            "train_accuracy": train_acc,
             "val_accuracy":   best_val_acc_global,
             "accuracy":     accuracy,
         })
@@ -368,7 +363,6 @@ if __name__ == "__main__":
             y_pred = preds["y_pred"]
             cm = confusion_matrix(y_true, y_pred, labels=labels)
             summary = df.groupby(["n_components", "n_points"])["accuracy"].agg(["mean", "std"])
-            print(f"  Train accuracy : {df['train_accuracy'].mean():.4f}")
             print(f"  Val accuracy   : {df['val_accuracy'].mean():.4f}")
             print(f"  Test accuracy  : {df['accuracy'].mean():.4f} ± {df['accuracy'].std():.4f}")
             save_results(summary, best_config, cm, df, config_label, output_dir="results")

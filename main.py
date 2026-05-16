@@ -12,13 +12,13 @@ from pipelines import pipeline_bilstm
 PATH_DOMAIN_1 = "/Users/matteogalizia/Documents/GitHub/MLSMM2154_Artificial-Intelligence_gesture_recognition/GestureData/GestureDataDomain1_Mons/Domain1_csv"
 PATH_DOMAIN_4 = "/Users/matteogalizia/Documents/GitHub/MLSMM2154_Artificial-Intelligence_gesture_recognition/GestureData/GestureDataDomain4_Mons"
 
-K_OPTIONS             = [1, 3, 5, 7]
-PCA_OPTIONS           = ["no_pca", 2, 3]
-CLUSTER_OPTIONS       = [15, 20, 25, 30, 35, 40]#, 45, 50, 55, 60] # for edit-distance method
-COMPRESSION           = [True, False] #  for edit-distance method
-N_POINTS_OPTIONS      = [16, 32, 64], #128, 256] # for three-centroid method
-TARGET_LENGTH_OPTIONS = [16, 32, 64]#, 128]
-N_UNITS_OPTIONS       = [16, 32, 64]#, 128]
+K_OPTIONS             = [1]#, 3, 5, 7]
+PCA_OPTIONS           = ["no_pca"]#, 2, 3]
+CLUSTER_OPTIONS       = [15]#, 20, 25, 30, 35, 40]#, 45, 50, 55, 60] # for edit-distance method
+COMPRESSION           = [True]#, False] #  for edit-distance method
+N_POINTS_OPTIONS      = [16]#, 32, 64], #128, 256] # for three-centroid method
+TARGET_LENGTH_OPTIONS = [16]#, 32, 64]#, 128]
+N_UNITS_OPTIONS       = [16]#, 32, 64]#, 128]
 CV_MODES              = ["dependent", "independent"]
 
 
@@ -26,8 +26,8 @@ def _save_best(df, preds, group_cols, config_label, labels):
     summary     = df.groupby(group_cols)["accuracy"].agg(["mean", "std"])
     best_config = summary["mean"].idxmax()
     print(f"  Best config: {best_config}  mean={summary.loc[best_config,'mean']:.4f}")
-    y_true = preds[best_config]["y_true"]
-    y_pred = preds[best_config]["y_pred"]
+    y_true = preds["y_true"]
+    y_pred = preds["y_pred"]
     cm = confusion_matrix(y_true, y_pred, labels=labels)
     save_results(summary, best_config, cm, df, config_label, output_dir="results")
 
@@ -35,7 +35,7 @@ def _save_best(df, preds, group_cols, config_label, labels):
 if __name__ == "__main__":
     datasets = {
         "domain1": load_data_domain_1(PATH_DOMAIN_1),
-        "domain4": load_data_domain_4(PATH_DOMAIN_4),
+        #"domain4": load_data_domain_4(PATH_DOMAIN_4),
     }
 
     # Each entry: (method name, pipeline runner, group columns for summary)
@@ -76,7 +76,7 @@ if __name__ == "__main__":
                 config_label = f"{domain_name}_{method_name}_{cv_mode}"
                 print(f"\n[{done}/{total}] Running: {config_label}")
 
-                df, preds = runner(gestures, cv_mode)
+                df, preds, _ = runner(gestures, cv_mode)
                 _save_best(df, preds, group_cols, config_label, labels)
 
     print("\nAll done. Results saved in ./results/")

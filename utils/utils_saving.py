@@ -24,7 +24,6 @@ def save_results(summary, best_config, cm, df, config_label, output_dir="results
         f.write(f"BEST CONFIG: {best_config}\n")
         best_mean = summary.loc[best_config, "mean"]
         best_std  = summary.loc[best_config, "std"]
-        f.write(f"  Train accuracy : {df['train_accuracy'].mean():.4f}\n")
         f.write(f"  Val accuracy   : {df['val_accuracy'].mean():.4f}\n")
         f.write(f"  Test accuracy  : {df['accuracy'].mean():.4f} ± {df['accuracy'].std():.4f}\n")
         f.write(f"Mean accuracy : {best_mean:.4f}\n")

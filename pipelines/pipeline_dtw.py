@@ -94,14 +94,8 @@ def run_pipeline(gestures, k_options, pca_options,
             test_proc  = test_norm
 
         cache_test = _dtw_distance_cache(train_proc, test_proc)
-        cache_train = _dtw_distance_cache(train_proc, train_proc)  # For majority vote on train set
-
         y_true = [lbl for lbl, _ in cache_test]
         y_pred = [majority_vote(d[:best_k]) for _, d in cache_test]
-
-        y_true_train = [lbl for lbl, _ in cache_train]
-        y_pred_train = [majority_vote(d[:best_k]) for _, d in cache_train]
-        train_acc = float(np.mean(np.array(y_true_train) == np.array(y_pred_train)))
 
         accuracy = float(np.mean(np.array(y_true) == np.array(y_pred)))
         global_predictions["y_true"].extend(y_true)
@@ -110,7 +104,6 @@ def run_pipeline(gestures, k_options, pca_options,
             "fold_id":      fold_id,
             "n_components": best_pca,
             "k":            best_k,
-            "train_accuracy": train_acc,
             "val_accuracy":   best_val_acc_global,
             "accuracy":     accuracy,
 
@@ -153,7 +146,6 @@ if __name__ == "__main__":
             y_pred = preds["y_pred"]
             cm = confusion_matrix(y_true, y_pred, labels=labels)
             summary = df.groupby(["n_components", "k"])["accuracy"].agg(["mean", "std"])
-            print(f"  Train accuracy : {df['train_accuracy'].mean():.4f}")
             print(f"  Val accuracy   : {df['val_accuracy'].mean():.4f}")
             print(f"  Test accuracy  : {df['accuracy'].mean():.4f} ± {df['accuracy'].std():.4f}")
             save_results(summary, best_config, cm, df, config_label, output_dir="results")

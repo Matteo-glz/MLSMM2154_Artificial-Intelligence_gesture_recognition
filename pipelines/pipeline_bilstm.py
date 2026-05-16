@@ -243,10 +243,6 @@ def run_pipeline(gestures, target_length_options, n_units_options,
         y_pred_original = np.argmax(model.predict(x_test, verbose=0), axis=1) + label_offset
         y_test_original = y_test + label_offset
         
-        y_pred_train = np.argmax(model.predict(x_train, verbose=0), axis=1) + label_offset  # ← nouveau
-        y_train_orig = y_train + label_offset                                                # ← nouveau
-        train_acc    = float(np.mean(y_pred_train == y_train_orig))
-
         accuracy = float(np.mean(y_pred_original == y_test_original))
         global_predictions["y_true"].extend(y_test_original.tolist())
         global_predictions["y_pred"].extend(y_pred_original.tolist())
@@ -254,7 +250,6 @@ def run_pipeline(gestures, target_length_options, n_units_options,
             "fold_id":       fold_id,
             "target_length": best_target_length,
             "n_units":       best_n_units,
-            "train_accuracy": train_acc,
             "val_accuracy":   best_val_acc_global,
             "accuracy":      accuracy,
         })
@@ -295,7 +290,6 @@ if __name__ == "__main__":
             y_pred = preds["y_pred"]
             cm = confusion_matrix(y_true, y_pred, labels=labels)
             summary = df.groupby(["target_length", "n_units"])["accuracy"].agg(["mean", "std"])
-            print(f"  Train accuracy : {df['train_accuracy'].mean():.4f}")
             print(f"  Val accuracy   : {df['val_accuracy'].mean():.4f}")
             print(f"  Test accuracy  : {df['accuracy'].mean():.4f} ± {df['accuracy'].std():.4f}")
             save_results(summary, best_config, cm, df, config_label, output_dir="results")
