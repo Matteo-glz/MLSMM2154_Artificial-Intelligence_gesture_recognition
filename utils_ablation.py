@@ -43,8 +43,8 @@ import pipelines.pipeline_bilstm        as pbl
 # Paths
 # ─────────────────────────────────────────────────────────────────────────────
 
-PATH_DOMAIN_1 = "/Users/simoensm/Documents/GitHub/MLSMM2154_Artificial-Intelligence_gesture_recognition/GestureData_Mons/GestureDataDomain1_Mons/Domain1_csv"
-PATH_DOMAIN_4 = "/Users/simoensm/Documents/GitHub/MLSMM2154_Artificial-Intelligence_gesture_recognition/GestureData_Mons/GestureDataDomain4_Mons"
+PATH_DOMAIN_1 = "/Users/matteogalizia/Documents/GitHub/MLSMM2154_Artificial-Intelligence_gesture_recognition/GestureData/GestureDataDomain1_Mons/Domain1_csv"
+PATH_DOMAIN_4 = "/Users/matteogalizia/Documents/GitHub/MLSMM2154_Artificial-Intelligence_gesture_recognition/GestureData/GestureDataDomain4_Mons"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Grilles de HPs (identiques à main.py)
@@ -244,7 +244,7 @@ def _run_bilstm(gestures, cv_mode, normalize,
                 model = pbl.build_bilstm_model(
                     (target_length, X_it.shape[2]), n_classes, n_units, dropout_rate)
                 model.fit(X_it, Y_it, epochs=epochs, batch_size=batch_size,
-                          validation_data=(X_iv, Y_iv),
+                          validation_data=(X_iv, y_iv),
                           callbacks=[EarlyStopping(monitor="val_loss", patience=5,
                                                    restore_best_weights=True, verbose=0)],
                           verbose=0)
