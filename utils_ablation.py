@@ -43,8 +43,8 @@ import pipelines.pipeline_bilstm        as pbl
 # Paths
 # ─────────────────────────────────────────────────────────────────────────────
 
-PATH_DOMAIN_1 = "/Users/matteogalizia/Documents/GitHub/MLSMM2154_Artificial-Intelligence_gesture_recognition/GestureData/GestureDataDomain1_Mons/Domain1_csv"
-PATH_DOMAIN_4 = "/Users/matteogalizia/Documents/GitHub/MLSMM2154_Artificial-Intelligence_gesture_recognition/GestureData/GestureDataDomain4_Mons"
+PATH_DOMAIN_1 = "/Users/simoensm/Documents/GitHub/MLSMM2154_Artificial-Intelligence_gesture_recognition/GestureData_Mons/GestureDataDomain1_Mons/Domain1_csv"
+PATH_DOMAIN_4 = "/Users/simoensm/Documents/GitHub/MLSMM2154_Artificial-Intelligence_gesture_recognition/GestureData_Mons/GestureDataDomain4_Mons"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Grilles de HPs (identiques à main.py)
@@ -73,6 +73,10 @@ PREPROCESSING_CONFIGS = [
 BILSTM_PREPROCESSING_CONFIGS = [
     {"normalize": False, "pca": "no_pca"},   # (A) Baseline
     {"normalize": True,  "pca": "no_pca"},   # (B) Normalisation seule
+    {"normalize": False, "pca": 2},           # (C) PCA 2D seule
+    {"normalize": True,  "pca": 2},           # (D) Norm + PCA 2D
+    {"normalize": False, "pca": 3},           # (E) PCA 3D seule
+    {"normalize": True,  "pca": 3},           # (F) Norm + PCA 3D
 ]
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -224,7 +228,7 @@ def _run_three_cent(gestures, cv_mode, normalize, pca_option, val_fraction=0.20)
 # BiLSTM  (PCA non applicable)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _run_bilstm(gestures, cv_mode, normalize,
+def _run_bilstm(gestures, cv_mode, normalize, pca_option="no_pca",
                 epochs=50, batch_size=16, dropout_rate=0.3, val_fraction=0.20):
     all_types    = sorted(set(g["gesture_type"] for g in gestures))
     n_classes    = len(all_types)
@@ -235,21 +239,21 @@ def _run_bilstm(gestures, cv_mode, normalize,
     hp_scores = defaultdict(list)
     for train, test, _ in cv_fn(gestures):
         inner_train, inner_val = inner_val_split(train, val_fraction)
-        it_proc, iv_proc = _apply_preprocessing(inner_train, inner_val, normalize, "no_pca")
+        it_proc, iv_proc = _apply_preprocessing(inner_train, inner_val, normalize, pca_option)
         for target_length in TARGET_LENGTH_OPTIONS:
-            X_it, _, Y_it = pbl._build_tensors(it_proc, target_length, n_classes, label_offset)
-            X_iv, y_iv, _ = pbl._build_tensors(iv_proc, target_length, n_classes, label_offset)
+            X_it, _, Y_it    = pbl._build_tensors(it_proc, target_length, n_classes, label_offset)
+            X_iv, y_iv, Y_iv = pbl._build_tensors(iv_proc, target_length, n_classes, label_offset)
             for n_units in N_UNITS_OPTIONS:
                 tf.keras.backend.clear_session()
                 model = pbl.build_bilstm_model(
                     (target_length, X_it.shape[2]), n_classes, n_units, dropout_rate)
                 model.fit(X_it, Y_it, epochs=epochs, batch_size=batch_size,
-                          validation_data=(X_iv, y_iv),
+                          validation_data=(X_iv, Y_iv),
                           callbacks=[EarlyStopping(monitor="val_loss", patience=5,
                                                    restore_best_weights=True, verbose=0)],
                           verbose=0)
                 val_acc = float(np.mean(
-                    np.argmax(model.predict(X_iv, verbose=0), axis=1) == y_iv))
+                    np.argmax(model(X_iv, training=False).numpy(), axis=1) == y_iv))
                 hp_scores[(target_length, n_units)].append(val_acc)
 
     best_hp  = max(hp_scores, key=lambda hp: np.mean(hp_scores[hp]))
@@ -259,7 +263,7 @@ def _run_bilstm(gestures, cv_mode, normalize,
     # Phase 2
     fold_accs = []
     for train, test, _ in cv_fn(gestures):
-        tr_proc, te_proc = _apply_preprocessing(train, test, normalize, "no_pca")
+        tr_proc, te_proc = _apply_preprocessing(train, test, normalize, pca_option)
         X_tr, y_tr, Y_tr = pbl._build_tensors(tr_proc, best_tl, n_classes, label_offset)
         X_te, y_te, _    = pbl._build_tensors(te_proc, best_tl, n_classes, label_offset)
         tf.keras.backend.clear_session()
@@ -270,7 +274,7 @@ def _run_bilstm(gestures, cv_mode, normalize,
                   callbacks=[EarlyStopping(monitor="val_loss", patience=5,
                                            restore_best_weights=True, verbose=0)],
                   verbose=0)
-        y_pred = np.argmax(model.predict(X_te, verbose=0), axis=1) + label_offset
+        y_pred = np.argmax(model(X_te, training=False).numpy(), axis=1) + label_offset
         y_test = y_te + label_offset
         fold_accs.append(float(np.mean(y_pred == y_test)))
 
@@ -293,10 +297,7 @@ if __name__ == "__main__":
     }
 
     METHOD_RUNNERS = {
-        "dtw":           (_run_dtw,           PREPROCESSING_CONFIGS),
-        "edit_distance": (_run_edit_distance, PREPROCESSING_CONFIGS),
-        "three_cent":    (_run_three_cent,    PREPROCESSING_CONFIGS),
-        "bilstm":        (_run_bilstm,        BILSTM_PREPROCESSING_CONFIGS),
+        "bilstm": (_run_bilstm, BILSTM_PREPROCESSING_CONFIGS),
     }
 
     CV_MODES = ["dependent", "independent"]
@@ -319,10 +320,7 @@ if __name__ == "__main__":
                              f"{cv_mode} | norm={normalize} pca={pca_option}")
                     print(f"\n{label}")
 
-                    if method_name == "bilstm":
-                        result = runner(gestures, cv_mode, normalize)
-                    else:
-                        result = runner(gestures, cv_mode, normalize, pca_option)
+                    result = runner(gestures, cv_mode, normalize, pca_option)
 
                     print(f"  val={result['val_acc']:.4f}  "
                           f"test={result['mean_test']:.4f} ± {result['std_test']:.4f}")

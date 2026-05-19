@@ -9,12 +9,9 @@
 % --- Page de garde ---
 \input{page_de_garde.tex}
 
-\input{01_abstract.tex}
-
-
 \onecolumn
-\renewcommand{\contentsname}{Table of content}
-\tableofcontents
+\input{01_abstract.tex}
+\newpage
 \twocolumn
 
 \section{Introduction}
@@ -30,7 +27,6 @@
 \section{Theoretical framework}
 \label{sec:theory}
 \input{04_theoritical_framework.tex}
-
 
 % ================================================================
 \section{Implementation and methodology}
@@ -58,7 +54,7 @@
 \label{sec:conclusion}
 % ================================================================
 
-% [To be completed.]
+\input{07_conclusion.tex}
 
 % ----------------------------------------------------------------
 \bibliographystyle{plain}

@@ -2,7 +2,7 @@
 **MLSMM2154 – Artificial Intelligence** | UCLouvain Mons  
 Professor: Marco Saerens | Assistants: Alexis Airson, Diego Eloi & Nicolas Szelagowski
 
-> **Status:** All five baselines implemented and evaluated — Edit Distance, DTW, $1 Dollar, 3-Cent, BiLSTM, and Transformer.
+> **Status:** Complete — four classifiers implemented, evaluated, and reported (DTW, Edit-distance, Three-Cents, BiLSTM).
 
 ---
 
@@ -17,7 +17,7 @@ Professor: Marco Saerens | Assistants: Alexis Airson, Diego Eloi & Nicolas Szela
 7. [Hyperparameter Grid](#hyperparameter-grid)
 8. [Output Files](#output-files)
 9. [Validation Strategy](#validation-strategy)
-10. [What's Next](#whats-next)
+10. [Key Results](#key-results)
 
 ---
 
@@ -38,34 +38,41 @@ Both datasets share the same structure: **10 users × 10 gesture types × 10 rep
 ```
 project/
 │
-├── data_loading.py              # Load Domain 1 and Domain 4 from raw .txt/.csv files
-├── data_splitting.py            # Cross-validation strategies (user-dependent & independent)
-├── data_preparation.py          # Normalisation and PCA (fit on train, apply to both)
+├── main.py                      # Main experiment runner (all methods)
+├── statistical_assessment.py    # Friedman + Nemenyi + Wilcoxon–Holm tests
+├── utils_ablation.py            # Ablation study across preprocessing configurations
 │
-├── baseline_edit_distance.py    # K-Means alphabet + Levenshtein edit-distance k-NN
-├── baseline_dollar_one.py       # $1 Dollar template-matching recogniser (3D)
-├── baseline_three_cent.py       # 3-Cent template-matching recogniser (3D, no rotation)
-├── baseline_bilstm.py           # Bidirectional LSTM gesture classifier
-├── baseline_transformer.py      # Transformer encoder gesture classifier
+├── data/
+│   ├── data_loading.py          # Load Domain 1 and Domain 4 from raw files
+│   ├── data_splitting.py        # Cross-validation strategies (user-dep. & indep.)
+│   └── data_preparation.py      # Normalisation and PCA (fit on train, apply to both)
 │
-├── utils_algorithms.py          # Edit distance & DTW implemented from scratch (numba)
-├── utils_assessment.py          # Majority vote
-├── utils_saving.py              # Write .txt reports and _raw.csv files
-├── utils_misc.py                # Experimental / scratch utilities
+├── pipelines/
+│   ├── pipeline_dtw.py          # DTW distance + k-NN
+│   ├── pipeline_edit_distance.py  # K-Means alphabet + Levenshtein edit-distance k-NN
+│   ├── pipeline_three_cent.py   # 3-Cent template-matching recogniser (3D, no rotation)
+│   ├── pipeline_bilstm.py       # Bidirectional LSTM gesture classifier
+│   └── pipeline_transformer.py  # Transformer encoder classifier (experimental)
 │
-├── main.py                      # Standard experiment runner (all baselines)
-├── main_optimized.py            # Parallelised runner (~90 % CPU utilisation)
-├── precompute_results.py        # Parallel grid precomputation (joblib)
-├── results_explorer.py          # Streamlit interactive results explorer
+├── utils/
+│   ├── utils_algorithms.py      # Edit distance & DTW implemented from scratch (numba)
+│   ├── utils_assessment.py      # Majority vote & evaluation helpers
+│   ├── utils_saving.py          # Write .txt reports and _raw.csv files
+│   └── utils_misc.py            # Miscellaneous utilities
 │
-├── viz_pipeline.py              # Interactive Plotly pipeline visualisation dashboard
-├── viz_mds.py                   # MDS 2-D embedding of gesture trajectories
+├── viz/
+│   ├── viz_pipeline.py          # Interactive Plotly pipeline visualisation dashboard
+│   ├── viz_mds.py               # MDS 2-D embedding of gesture trajectories
+│   ├── results_explorer.py      # Streamlit interactive results explorer
+│   └── dashboard.html           # Pre-rendered dashboard
 │
 ├── results/                     # Auto-generated output folder
-│   ├── domain1_edit-distance_dependent.txt
-│   ├── domain1_edit-distance_dependent_raw.csv
+│   ├── domain1_dtw_dependent.txt
+│   ├── domain1_dtw_dependent_raw.csv
 │   └── ...
 │
+├── ablation_results/            # Output of utils_ablation.py
+├── rapport/                     # LaTeX source of the final report
 └── README.md
 ```
 
@@ -75,15 +82,6 @@ project/
 
 The pipeline is modular — every preprocessing and evaluation step is reusable across methods and datasets. All preprocessing is **fit exclusively on the training set** of each fold and applied to both train and test (no data leakage).
 
-### Edit Distance
-
-```
-Raw trajectories → Normalisation → [Optional PCA]
-  → K-Means clustering → symbolic sequences ("AAABBBCCA…")
-  → [Optional compression] (remove consecutive duplicates → "ABCA")
-  → Levenshtein edit distance + k-NN → prediction
-```
-
 ### DTW
 
 ```
@@ -91,15 +89,13 @@ Raw trajectories → Normalisation → [Optional PCA]
   → Dynamic Time Warping distance + k-NN → prediction
 ```
 
-> DTW works directly on 3D coordinates — no clustering or symbolic conversion needed.
-
-### $1 Dollar (3D)
+### Edit Distance
 
 ```
 Raw trajectories → Normalisation → [Optional PCA]
-  → Resample to N points → rotate to indicative angle
-  → scale by bounding box → translate to centroid
-  → Golden Section Search over ±45° → nearest template → prediction
+  → K-Means clustering → symbolic sequences ("AAABBBCCA…")
+  → [Optional compression] (remove consecutive duplicates → "ABCA")
+  → Levenshtein edit distance + k-NN → prediction
 ```
 
 ### 3-Cent (3D)
@@ -111,7 +107,7 @@ Raw trajectories → Normalisation → [Optional PCA]
   → path distance to nearest template → prediction
 ```
 
-> 3-Cent keeps gesture orientation intact, which is important for 3D mid-air gestures where direction is meaningful (swipe-left ≠ swipe-right).
+> 3-Cent keeps gesture orientation intact, which is important for 3D mid-air gestures where direction is meaningful.
 
 ### BiLSTM
 
@@ -121,37 +117,25 @@ Raw trajectories → Normalisation
   → BatchNorm → Dropout → Dense → softmax → prediction
 ```
 
-### Transformer
-
-```
-Raw trajectories → Normalisation
-  → Resample to fixed length → Dense projection to d_model
-  → + sinusoidal positional encoding
-  → Multi-Head Self-Attention + LayerNorm
-  → Feed-Forward Network + LayerNorm
-  → Global Average Pooling → Dropout → softmax → prediction
-```
-
 ---
 
 ## Installation
 
 ```bash
 pip install numpy pandas scikit-learn scipy numba
-pip install tensorflow          # for BiLSTM and Transformer
-pip install tqdm                # for main_optimized.py
-pip install plotly              # for viz_pipeline.py
-pip install streamlit           # for results_explorer.py
-pip install joblib              # for precompute_results.py
+pip install tensorflow          # for BiLSTM
+pip install tqdm
+pip install plotly              # for viz/viz_pipeline.py
+pip install streamlit           # for viz/results_explorer.py
 ```
 
-> All core algorithms (edit distance, DTW) are implemented from scratch in `utils_algorithms.py` using numba JIT compilation, as required by the project guidelines.
+> All core algorithms (edit distance, DTW) are implemented from scratch in `utils/utils_algorithms.py` using numba JIT compilation, as required by the project guidelines.
 
 ---
 
 ## Data
 
-Place the data folders as follows, or update the paths in `main.py`:
+Place the data folders as follows, or update the paths at the top of `main.py`:
 
 ```
 GestureData_Mons/
@@ -167,9 +151,9 @@ Each file contains header metadata (subject ID, gesture type) followed by rows o
 
 ## How to Run
 
-### Standard runner
+### Main experiment runner
 
-Update the two data paths at the top of the `__main__` block in `main.py`, then:
+Update the two data paths at the top of `main.py`, then:
 
 ```bash
 python main.py
@@ -177,66 +161,44 @@ python main.py
 
 Loops over all combinations of dataset × method × CV mode and saves one result file per combination in `./results/`.
 
-### Parallelised runner (recommended for Edit Distance and 3-Cent)
+### Statistical tests
 
 ```bash
-python main_optimized.py                       # domain 1+4, edit-distance + 3-Cent
-python main_optimized.py --domain 1            # domain 1 only
-python main_optimized.py --method ed tc dtw    # include DTW
-python main_optimized.py --cv dependent        # one CV mode only
-python main_optimized.py --jobs 8              # cap worker count
+python statistical_assessment.py
 ```
 
-Uses ~90 % of available CPU cores via fine-grained task parallelism. Wall-clock time ≈ time for a single fold instead of 20×.
+Runs the Friedman test followed by Nemenyi and Wilcoxon–Holm post-hoc comparisons on the user-independent results stored in `./results/`.
 
-### BiLSTM and Transformer
-
-Each deep learning baseline has its own convenience wrapper:
-
-```python
-from baseline_bilstm import run_bilstm_for_dataset
-from baseline_transformer import run_transformer_for_dataset
-
-run_bilstm_for_dataset("domain1", gestures, cv_mode="dependent")
-run_transformer_for_dataset("domain1", gestures, cv_mode="independent")
-```
-
-Or run the file directly after updating the data paths in the `__main__` block:
+### Ablation study
 
 ```bash
-python baseline_bilstm.py
-python baseline_transformer.py
+python utils_ablation.py
 ```
 
-### Interactive visualisation dashboard
+Evaluates all combinations of normalisation and PCA settings for each classifier and saves results to `./ablation_results/`.
+
+### Interactive visualisation
 
 ```bash
-python viz_pipeline.py                   # Domain 1, all sections
-python viz_pipeline.py --domain 4 --open # Domain 4, auto-open browser
-python viz_pipeline.py --skip-baselines  # skip slow CV sections
-```
-
-### Results explorer
-
-```bash
-streamlit run results_explorer.py
+python viz/viz_pipeline.py                   # pipeline visualisation (Plotly)
+streamlit run viz/results_explorer.py        # interactive results explorer
+python viz/viz_mds.py                        # MDS embedding of trajectories
 ```
 
 ---
 
 ## Hyperparameter Grid
 
-| Parameter | Edit Distance | DTW | $1 / 3-Cent | BiLSTM | Transformer |
-|---|---|---|---|---|---|
-| `k` (nearest neighbours) | 1, 3, 5, 7 | 1, 3, 5, 7 | — | — | — |
-| `n_clusters` (K-Means) | 5 → 21 (step 2) | — | — | — | — |
-| `compression` | True / False | — | — | — | — |
-| `n_components` (PCA) | no\_pca, 1, 2, 3 | no\_pca, 1, 2, 3 | no\_pca, 1, 2, 3 | — | — |
-| `n_points` (resample) | — | — | 16, 32, 64, 128, 256 | 32, 64, 128 | 32, 64, 128 |
-| `n_units` (BiLSTM size) | — | — | — | 32, 64, 128 | — |
-| `d_model` (Transformer dim) | — | — | — | — | 32, 64, 128 |
+| Parameter | Edit-distance | DTW | 3-Cent | BiLSTM |
+|---|---|---|---|---|
+| `k` (nearest neighbours) | 1, 3, 5, 7 | 1, 3, 5, 7 | — | — |
+| `n_clusters` (K-Means) | 15, 20, 25, 30, 35, 40 | — | — | — |
+| `compression` | True / False | — | — | — |
+| `n_components` (PCA) | no\_pca, 2, 3 | no\_pca, 2, 3 | no\_pca, 2, 3 | — |
+| `n_points` (resample) | — | — | 16, 32, 64 | 16, 32, 64 |
+| `n_units` (hidden size) | — | — | — | 16, 32, 64 |
 
-All combinations are evaluated across **user-dependent** and **user-independent** CV on both **Domain 1** and **Domain 4**.
+All combinations are evaluated under **user-dependent** and **user-independent** CV on both **Domain 1** and **Domain 4**.
 
 ---
 
@@ -251,31 +213,21 @@ RESULTS — domain1_edit-distance_dependent
 Generated: 2026-04-07 01:14:02
 ============================================================
 
-FULL SUMMARY (mean accuracy ± std per config)
-----------------------------------------
-n_components  n_clusters  k
-no_pca        7           3     mean: 0.8234   std: 0.0512
-              7           5     mean: 0.8101   ...
-
-BEST CONFIG: ('no_pca', 7, 3)
-Mean accuracy : 0.8234
-Std           : 0.0512
+BEST CONFIG: ('no_pca', 35, 1)
+Mean accuracy : 0.9910
+Std           : 0.0071
 
 CONFUSION MATRIX (best config)
 ----------------------------------------
-[[45,  2,  0, ...],
+[[100,  0,  0, ...],
  ...]
 ```
 
-**`{domain}_{method}_{cv_mode}_raw.csv`** — one row per fold, for further analysis or statistical testing.
+**`{domain}_{method}_{cv_mode}_raw.csv`** — one row per fold, for statistical testing.
 
 ---
 
 ## Validation Strategy
-
-### Cross-validation — what is a fold?
-
-Instead of splitting data once (unreliable), we repeat the train/test split multiple times in different ways and average the results. Each split is called a **fold**.
 
 ### User-independent (Leave-One-User-Out)
 
@@ -285,10 +237,7 @@ The test user is completely unseen during training. There are **10 folds**, one 
 Fold 0:  Train = users [1..9]     Test = user [0]   → 900 train / 100 test
 Fold 1:  Train = users [0,2..9]   Test = user [1]   → 900 train / 100 test
 ...
-Fold 9:  Train = users [0..8]     Test = user [9]   → 900 train / 100 test
 ```
-
-This evaluates whether the system generalises to a **new user** it has never seen.
 
 ### User-dependent (Leave-One-Repetition-Out)
 
@@ -300,21 +249,23 @@ Fold 1:  Train = repetitions [0,2..9] Test = repetition [1]  → 900 train / 100
 ...
 ```
 
-This evaluates performance when the system has been **calibrated on the specific user**.
-
-> As expected, user-dependent accuracy is higher than user-independent — the model benefits from knowing the user's personal gesture style.
-
-### No data leakage
-
-All preprocessing (normalisation, PCA, K-Means) is **fit exclusively on the training set** of each fold and then applied to both train and test. Deep learning models are rebuilt and retrained from scratch at every fold.
+All preprocessing (normalisation, PCA, K-Means) is **fit exclusively on the training set** of each fold. Deep learning models are rebuilt and retrained from scratch at every fold.
 
 ---
 
-## What's Next
+## Key Results
 
-- [ ] Statistical hypothesis testing on user-independent results (Wilcoxon signed-rank test)
-- [ ] Write final report (PDF, max 10 pages, deadline May 17 2026)
+Best test accuracy (mean ± std across 10 folds) using the best hyperparameter configuration per method:
+
+| Method | Domain 1 indep. | Domain 1 dep. | Domain 4 indep. | Domain 4 dep. |
+|---|---|---|---|---|
+| DTW | 82.6 ± 12.4 % | 99.6 ± 0.5 % | 74.4 ± 11.2 % | 99.5 ± 1.0 % |
+| Edit-distance | 67.9 ± 23.1 % | 99.1 ± 0.7 % | 60.2 ± 19.5 % | 98.3 ± 1.4 % |
+| **Three-Cents** | **96.3 ± 4.6 %** | **99.8 ± 0.4 %** | **95.1 ± 5.3 %** | **98.6 ± 1.3 %** |
+| BiLSTM | 85.0 ± 12.7 % | 97.2 ± 2.2 % | 70.1 ± 8.2 % | 88.5 ± 3.2 % |
+
+Three-Cents is the only method statistically superior to all others in the user-independent setting (Friedman test, $p < 0.001$; Nemenyi and Wilcoxon–Holm post-hoc, $\alpha = 0.05$).
 
 ---
 
-*Last updated: April 2026*
+*Last updated: May 2026*
