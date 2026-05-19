@@ -92,6 +92,142 @@ capacity and overfitting on a $\sim$1\,000-sample dataset. The selected
 sequence length $T$ varies between 16 and 64 frames without a clear pattern,
 suggesting that the model is relatively robust to this choice.
 
+\subsection{Ablation Study}
+\label{subsec:ablation}
+
+This section isolates the effect of each preprocessing decision (z-score normalization
+and dimensionality reduction via PCA ($n_{\text{components}} \in \{2, 3\}$ or none))
+on the test accuracy of the four classifiers, across both domains and both
+cross-validation protocols. The study covers all 80 configurations systematically.
+
+\subsubsection{Effect of Normalization}
+
+\paragraph{General trend.}
+Normalization brings a systematic but modest gain in the user-dependent regime
+($+0.2$ to $+3.0$ pp depending on method and domain) and a more substantial gain in the
+user-independent regime ($+1.5$ to $+20.8$ pp for DTW, $+1.6$ to $+17.6$ pp for
+edit-distance). This contrast has a straightforward mechanical explanation: in
+user-dependent mode, training templates come from the same user as the test sample, so
+absolute amplitudes and positions are already coherent, and normalization adds little.
+In user-independent mode, raw trajectories can differ substantially across individuals
+in amplitude and centering; standardization reduces this covariate shift and improves
+generalization.
+
+\paragraph{DTW.}
+The effect is particularly pronounced on domain~4 in independent mode: normalization
+alone (without PCA) moves accuracy from $55.2\%$ to $60.0\%$ ($+4.9$ pp), and combined
+with PCA-2D, from $57.4\%$ to $78.0\%$ ($+20.6$ pp). This last figure is the most
+dramatic gain in the entire study. However, the standard deviation remains high
+($\sigma \approx 0.08$--$0.09$), which tempers enthusiasm.
+
+\paragraph{Edit-distance.}
+The gain from normalization is systematic but non-uniform across PCA settings. On
+domain~1 independent, normalization improves accuracy by $+2.0$ pp (without PCA),
+$+4.8$ pp (PCA-2D), and $+4.1$ pp (PCA-3D). On domain~4 the gains are even more
+variable: $+8.9$ pp (without PCA), $+17.5$ pp (PCA-2D), $+12.8$ pp (PCA-3D). This
+interaction between normalization and PCA suggests that the two transformations are not
+independent: normalization conditions the geometry of the space in which PCA operates,
+and the effectiveness of the subsequent vector quantization depends directly on this.
+
+\paragraph{Three-Cents.}
+The effect of normalization is remarkably weak for this classifier. On domain~1
+independent, the difference between unnormalized and normalized is $0.0$ pp (without PCA),
+$+0.2$ pp (PCA-2D), and $+0.5$ pp (PCA-3D) all below the inter-fold standard
+deviation and therefore statistically indistinguishable from zero. This result is not
+surprising: the Three-Cents method already incorporates
+intrinsic geometric normalization which absorbs most of the amplitude and position variability that z-score
+standardization is meant to correct. In other words, normalization is largely redundant
+with the internal invariances of Three-Cents. This is a non-trivial ablation finding,
+and it suggests that the design choices of the Three-Cents recognizer are well-motivated
+from a preprocessing perspective.
+
+\paragraph{BiLSTM.}
+Normalization has the largest relative effect here: on domain~1 dependent, it moves
+accuracy from $95.2\%$ to $98.4\%$ ($+3.2$ pp), and on domain~4 dependent, from
+$85.8\%$ to $90.9\%$ ($+5.1$ pp). In independent mode the effect is less clear-cut
+($+2.4$ pp on domain~1, $-1.2$ pp on domain~4, slightly negative but within the
+margin of error). This heightened sensitivity of the BiLSTM to normalization is
+consistent with the broader literature on recurrent networks: LSTMs are known to be
+sensitive to input scale, and the absence of normalization can induce gradient
+instabilities or convergence to suboptimal minima. The absence of PCA configurations
+for the BiLSTM in our experiments constitutes a limitation: we cannot assess whether
+dimensionality reduction would provide additional regularization for this classifier.
+
+\subsubsection{Effect of Dimensionality Reduction (PCA)}
+
+\paragraph{DTW.}
+PCA systematically improves DTW in independent mode, but non-monotonically with respect
+to the number of components. On domain~1, the best test accuracy is obtained with PCA-2D
+normalized ($83.6\%$) rather than PCA-3D normalized ($82.6\%$), whereas one might
+intuitively expect more dimensions to preserve more discriminant information. This
+counterintuitive result can be explained by DTW's sensitivity to noise in each dimension
+independently. By projecting onto two components, the third component (likely
+dominated by depth ($z$) noise that is poorly reproducible across users) is discarded.
+PCA thus acts not as an information reduction but as implicit denoising.
+
+On domain~4, the pattern is cleaner: PCA-2D normalized ($78.0\%$) outperforms PCA-3D
+normalized ($74.7\%$), both well above no-PCA ($60.0\%$). Here the depth component of
+the 3D figures may also carry inter-user noise that the 2D projection filters out,
+despite these figures being intrinsically 3D\@. This is a somewhat surprising finding and
+suggests that for DTW on domain~4, a 2D PCA is not simply discarding irrelevant
+information but is genuinely improving the signal-to-noise ratio.
+
+\paragraph{Edit-distance.}
+PCA improves edit-distance significantly only when combined with normalization. On
+domain~4 independent, PCA-2D without normalization gives $45.7\%$, versus $63.2\%$ with
+normalization, a difference of $17.5$ pp that does not come from PCA alone but from
+the interaction of both transformations. More striking, PCA-3D without normalization
+($47.2\%$) is barely above no-PCA without normalization ($44.2\%$): PCA adds virtually
+nothing, or even marginally degrades, without prior normalization. This highlights a
+genuine methodological risk: applying PCA to non-normalized data amounts to projecting
+onto directions dominated by high-variance dimensions (typically $z$, the depth axis),
+which are not necessarily the most discriminant ones. The practical implication is clear :
+PCA should never be applied to raw gesture data without prior normalization.
+
+\paragraph{Three-Cents.}
+The contrast between domain~1 and domain~4 is particularly instructive. On domain~1,
+PCA brings little in dependent mode (no-PCA configurations already reach $100\%$) but a
+modest gain in independent mode: PCA-3D normalized reaches $97.7\%$ vs.\ $95.8\%$
+without PCA ($+1.9$ pp). On domain~4, the gain is much larger: PCA-2D normalized
+reaches $93.8\%$ in independent mode vs.\ $84.8\%$ without PCA ($+9.0$ pp), while
+PCA-3D normalized ($95.1\%$) is the overall best configuration.
+
+This contrast reflects the intrinsic geometry of the two domains. Digits (domain~1) are
+essentially planar figures drawn in the air: their inter-user variability concentrates
+on the third dimension ($z$), which is geometrically non-informative. PCA-2D eliminates
+precisely this noisy dimension, consistent with the selection of PCA-2D by inner
+validation in our main experiments. The geometric figures (domain~4) are intrinsically
+3D; PCA-3D retains all discriminant directions while removing residual noise through
+standardization. The fact that PCA-3D (which involves no actual dimensionality
+reduction on 3D data) improves results suggests that it is the normalization rather
+than the projection itself that carries most of the gain, with PCA here playing a role
+of axis decorrelation rather than dimension reduction.
+
+\subsubsection{Summary}
+
+Three main conclusions emerge from this ablation study.
+
+\begin{enumerate}
+  \item \textbf{Normalization is quasi-universally beneficial}, but its magnitude
+    varies by an order of magnitude across methods. It is essential for DTW,
+    edit-distance, and BiLSTM in independent mode, but redundant for Three-Cents
+    due to its internal invariances.
+
+  \item \textbf{PCA is a double-edged tool}. Combined with normalization, it
+    significantly improves DTW and edit-distance. Without normalization, it can
+    degrade performance, particularly for edit-distance on domain~4. Its effect is
+    never monotone with respect to the number of components, which argues for careful
+    and context-specific use rather than systematic application.
+
+  \item \textbf{Three-Cents is remarkably robust to preprocessing choices}. The gap
+    between its worst and best configuration in independent mode is $1.9$ pp
+    (domain~1) and $13.8$ pp (domain~4). This robustness is a considerable practical
+    advantage, though it also means that preprocessing optimization offers limited
+    leverage for this classifier beyond the baseline.
+
+\end{enumerate}
+
+
 \subsection{Classification accuracy}
 \label{subsec:accuracy}
 
@@ -173,6 +309,138 @@ user-dependent setting, however, Edit-distance nearly saturates ($\geq 98\%$),
 showing that the method is not fundamentally flawed but simply sensitive to
 the covariate shift introduced by unseen users.
 
+\subsection{Confusion Matrix Analysis}
+\label{subsec:confusion}
+
+The Three-Cents method represents the best-performing method across all settings. The confusions that emerge are geometrically motivated in every case: misclassifications arise when two gesture classes share enough trajectory structure to be ambiguous under the resample--scale--translate normalization, particularly when the model must generalize across users.
+
+\subsubsection{Domain 1: Digits (0--9)}
+
+\paragraph{User-dependent (99.8\% accuracy).}
+Near-perfect recognition. The only confusion is 2~samples of digit~0 misclassified as digit~8. This is the single most intuitive mistake in the entire dataset: both gestures share a closed oval shape, and their 3D trajectories differ mainly in whether a second loop is drawn. In a user-dependent setting where the model has seen each user's style repeatedly, even this pair is almost perfectly separated. Every other digit achieves 100/100.
+
+\begin{table}[H]
+\centering
+\caption{Confusion matrix -- Domain~1, user-dependent (99.8\%).}
+\label{tab:cm_d1_dep}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{r|rrrrrrrrrr}
+\toprule
+ & \textbf{0} & \textbf{1} & \textbf{2} & \textbf{3} & \textbf{4} & \textbf{5} & \textbf{6} & \textbf{7} & \textbf{8} & \textbf{9} \\
+\midrule
+\textbf{0} & 98 &   0 &   0 &   0 &   0 &   0 &   0 &   0 &   2 &   0 \\
+\textbf{1} &  0 & 100 &   0 &   0 &   0 &   0 &   0 &   0 &   0 &   0 \\
+\textbf{2} &  0 &   0 & 100 &   0 &   0 &   0 &   0 &   0 &   0 &   0 \\
+\textbf{3} &  0 &   0 &   0 & 100 &   0 &   0 &   0 &   0 &   0 &   0 \\
+\textbf{4} &  0 &   0 &   0 &   0 & 100 &   0 &   0 &   0 &   0 &   0 \\
+\textbf{5} &  0 &   0 &   0 &   0 &   0 & 100 &   0 &   0 &   0 &   0 \\
+\textbf{6} &  0 &   0 &   0 &   0 &   0 &   0 & 100 &   0 &   0 &   0 \\
+\textbf{7} &  0 &   0 &   0 &   0 &   0 &   0 &   0 & 100 &   0 &   0 \\
+\textbf{8} &  0 &   0 &   0 &   0 &   0 &   0 &   0 &   0 & 100 &   0 \\
+\textbf{9} &  0 &   0 &   0 &   0 &   0 &   0 &   0 &   0 &   0 & 100 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\paragraph{User-independent (96.3\% accuracy).}
+The model generalizes well across users, but two pairs reveal inter-user style variability. Digit~0 is the most problematic class: 10 out of 100 samples are misclassified as digit~3, 6~as digit~6, and 8~as digit~8. This is geometrically coherent: digit~0 shares a circular arc with 6 and 8, and some users draw~0 with a slight leftward lean that resembles~3. Conversely, digit~8 also sees 7 of its own samples confused back with~0, confirming that the $0 \leftrightarrow 8$ boundary is the hardest in the domain. A minor $9 \to 7$ confusion (1~sample) and a $5 \to 2$ confusion (1~sample) are present but negligible.
+
+\begin{table}[H]
+\centering
+\caption{Confusion matrix -- Domain~1, user-independent (96.3\%).}
+\label{tab:cm_d1_indep}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{r|rrrrrrrrrr}
+\toprule
+ & \textbf{0} & \textbf{1} & \textbf{2} & \textbf{3} & \textbf{4} & \textbf{5} & \textbf{6} & \textbf{7} & \textbf{8} & \textbf{9} \\
+\midrule
+\textbf{0} & 72 &   0 &   0 &  10 &   4 &   0 &   6 &   0 &   8 &   0 \\
+\textbf{1} &  0 & 100 &   0 &   0 &   0 &   0 &   0 &   0 &   0 &   0 \\
+\textbf{2} &  0 &   0 & 100 &   0 &   0 &   0 &   0 &   0 &   0 &   0 \\
+\textbf{3} &  0 &   0 &   0 & 100 &   0 &   0 &   0 &   0 &   0 &   0 \\
+\textbf{4} &  0 &   0 &   0 &   0 & 100 &   0 &   0 &   0 &   0 &   0 \\
+\textbf{5} &  0 &   0 &   1 &   0 &   0 &  99 &   0 &   0 &   0 &   0 \\
+\textbf{6} &  0 &   0 &   0 &   0 &   0 &   0 & 100 &   0 &   0 &   0 \\
+\textbf{7} &  0 &   0 &   0 &   0 &   0 &   0 &   0 & 100 &   0 &   0 \\
+\textbf{8} &  7 &   0 &   0 &   0 &   0 &   0 &   0 &   0 &  93 &   0 \\
+\textbf{9} &  0 &   0 &   0 &   0 &   0 &   0 &   0 &   1 &   0 &  99 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+The asymmetry is noteworthy: digit~0 is misclassified into several other classes (3, 4, 6, 8), while those classes rarely mistake themselves for a~0. This suggests that~0 is the most geometrically ambiguous digit: its circular shape has the highest overlap with the trajectory space of other digits when drawn by unseen users.
+
+\subsubsection{Domain 4: 3D Geometric Figures}
+
+\paragraph{User-dependent (98.6\% accuracy).}
+A few localized confusions appear. The main one is Pyramid being confused with Cylindrical Pipe (6/100), which reflects that both involve elongated swept-stroke trajectories without strong closed-shape anchors. Cylinder loses 2~samples to Rectangular Pipe and 1 to Toroid, which makes sense as all three involve a dominant circular cross-section. Hemisphere loses 2~samples to Cuboid and 1 to Sphere, consistent with the ambiguity between a half-sphere and a full sphere or a boxy gesture.
+
+\begin{table}[H]
+\centering
+\caption{Confusion matrix -- Domain~4, user-dependent (98.6\%).}
+\label{tab:cm_d4_dep}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{l|rrrrrrrrrr}
+\toprule
+ & \textbf{Cu.} & \textbf{Cy.} & \textbf{Sph.} & \textbf{R.\,Pipe} & \textbf{Hemi.} & \textbf{Cone} & \textbf{C.\,Pipe} & \textbf{Py.} & \textbf{Te.} & \textbf{To.} \\
+\midrule
+\textbf{Cuboid}      & 100 &   0 &  0 &   0 &  0 &   0 &  0 &  0 &   0 &   0 \\
+\textbf{Cylinder}    &   0 & 100 &  0 &   0 &  0 &   0 &  0 &  0 &   0 &   0 \\
+\textbf{Sphere}      &   0 &   0 & 98 &   1 &  0 &   0 &  0 &  0 &   0 &   1 \\
+\textbf{Rect. Pipe}  &   0 &   0 &  0 & 100 &  0 &   0 &  0 &  0 &   0 &   0 \\
+\textbf{Hemisphere}  &   2 &   0 &  1 &   0 & 97 &   0 &  0 &  0 &   0 &   0 \\
+\textbf{Cone}        &   0 &   0 &  0 &   0 &  0 & 100 &  0 &  0 &   0 &   0 \\
+\textbf{Cyl. Pipe}   &   0 &   0 &  0 &   0 &  0 &   0 & 98 &  2 &   0 &   0 \\
+\textbf{Pyramid}     &   0 &   0 &  0 &   1 &  0 &   0 &  6 & 93 &   0 &   0 \\
+\textbf{Tetrahedron} &   0 &   0 &  0 &   0 &  0 &   0 &  0 &  0 & 100 &   0 \\
+\textbf{Toroid}      &   0 &   0 &  0 &   0 &  0 &   0 &  0 &  0 &   0 & 100 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\paragraph{User-independent (95.1\% accuracy).}
+Confusions intensify and spread. The most dramatic is Cone $\to$ Rectangular Pipe: 12 out of 100 Cone samples are misclassified, reflecting that the tapering apex of a cone can resemble the elongated rectangular sweep of a pipe when drawn mid-air with inter-user variability in stroke order and depth. Pyramid $\to$ Cylindrical Pipe worsens to 16~misclassifications (the strongest off-diagonal entry in the entire dataset), suggesting these two are the hardest pair in Domain~4. Cylinder and Hemisphere remain slightly confused with neighboring classes.
+
+\begin{table}[H]
+\centering
+\caption{Confusion matrix -- Domain~4, user-independent (95.1\%).}
+\label{tab:cm_d4_indep}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{l|rrrrrrrrrr}
+\toprule
+& \textbf{Cu.} & \textbf{Cy.} & \textbf{Sph.} & \textbf{R.\,Pipe} & \textbf{Hemi.} & \textbf{Cone} & \textbf{C.\,Pipe} & \textbf{Py.} & \textbf{Te.} & \textbf{To.} \\
+\midrule
+\textbf{Cuboid}      & 100 &  0 &  0 &   0 &  0 &  0 &  0 &  0 &  0 &  0 \\
+\textbf{Cylinder}    &   0 & 98 &  0 &   0 &  0 &  0 &  0 &  0 &  2 &  0 \\
+\textbf{Sphere}      &   0 &  0 & 97 &   1 &  0 &  1 &  0 &  0 &  0 &  1 \\
+\textbf{Rect. Pipe}  &   0 &  0 &  0 & 100 &  0 &  0 &  0 &  0 &  0 &  0 \\
+\textbf{Hemisphere}  &   2 &  0 &  1 &   0 & 97 &  0 &  0 &  0 &  0 &  0 \\
+\textbf{Cone}        &   0 &  0 &  0 &  12 &  0 & 87 &  0 &  0 &  0 &  1 \\
+\textbf{Cyl. Pipe}   &   0 &  0 &  0 &   0 &  0 &  0 & 93 &  7 &  0 &  0 \\
+\textbf{Pyramid}     &   0 &  0 &  0 &   0 &  0 &  1 & 16 & 83 &  0 &  0 \\
+\textbf{Tetrahedron} &   0 &  0 &  0 &   1 &  0 &  0 &  0 &  0 & 97 &  2 \\
+\textbf{Toroid}      &   0 &  0 &  1 &   0 &  0 &  0 &  0 &  0 &  0 & 99 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+The Pyramid--Cylindrical Pipe confusion warrants further discussion. Both gestures involve a dominant vertical or diagonal stroke followed by shorter strokes, and neither has a strongly closed circular or rectangular element that would anchor the Three-Cents template. After normalization, the point clouds of these two classes can become nearly indistinguishable when drawn by an unseen user with a different aspect ratio or stroke angle.
+
+\subsubsection{Confusion Matrices Summary}
+
+Across all four matrices, three patterns hold consistently.
+
+First, \textbf{all errors are geometrically motivated}. Every misclassification has a clear geometric explanation. Classes that share a dominant shape element (closed loop, elongated sweep, absent closed base) are always the ones confused. Random or arbitrary errors are entirely absent from the matrices.
+
+Second, \textbf{user-shift amplifies but does not create confusion pairs}. The user-independent matrices show the same pairs confused as the user-dependent ones, but at higher rates and with additional secondary confusions. The underlying ambiguity is already present in the user-dependent setting; cross-user variability simply amplifies it. This suggests that targeted data augmentation simulating inter-user style variation could specifically address these boundaries.
+
+Third, \textbf{Domain~4 is structurally harder than Domain~1}. Domain~4 exhibits more widespread confusions in the user-independent setting (8 non-zero off-diagonal entries vs.\ 5 for Domain~1). The intrinsically 3D nature of geometric figures makes inter-user normalization harder. A digit is drawn the same way by virtually all users; a Cone or Pyramid admits many valid stroke sequences that produce very different normalized trajectories.
+
+% ----------------------------------------------------------------
 \subsection{Statistical comparison of the methods}
 \label{subsec:stats}
 
