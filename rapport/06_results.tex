@@ -36,17 +36,17 @@ apply.}
  & & user-indep. & user-dep. & user-indep. & user-dep. \\
 \midrule
 \multirow{2}{*}{DTW}
-  & PCA                   & none & none & none & none \\
+  & PCA                   & 3 & 3 & 3 & 3 \\
   & $k$-NN neighbours $k$ & 1    & 1    & 1    & 1    \\
 \midrule
 \multirow{4}{*}{Edit-distance}
-  & PCA                   & none & none & none & none \\
+  & PCA                   & 3 & 3 & 3 & 3 \\
   & Codebook size $K$     & 40   & 35   & 20   & 40   \\
   & Compression           & No   & No   & No   & No   \\
   & $k$-NN neighbours $k$ & 1    & 1    & 1    & 1    \\
 \midrule
 \multirow{2}{*}{Three-Cents}
-  & PCA                          & \textbf{2D} & \textbf{2D} & none & none \\
+  & PCA                          & 2 & 2 & 3 & 3 \\
   & Resampling points $n$        & 16          & 16          & 16   & 16   \\
 \midrule
 \multirow{2}{*}{BiLSTM}
