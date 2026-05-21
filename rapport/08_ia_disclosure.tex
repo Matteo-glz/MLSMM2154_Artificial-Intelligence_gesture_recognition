@@ -1,0 +1,55 @@
+% !TEX root = main.tex
+\addcontentsline{toc}{section}{Use of Generative AI Tools}
+This report was produced with the assistance of a generative AI
+language model (Anthropic Claude) used as a productivity and
+analytical support tool. Specifically, AI assistance was used for
+the following tasks:
+\begin{itemize}
+  \item \textbf{Code generation and debugging.}
+  The Python pipeline implementing the four classifiers
+  (DTW, Edit-distance with $k$-means vector quantization,
+  Three-Cents, and BiLSTM), the nested cross-validation
+  infrastructure, the hyperparameter grid search, the
+  preprocessing utilities (z-score normalization, PCA),
+  and the statistical assessment routines (Friedman,
+  Nemenyi, Wilcoxon--Holm) were developed with AI-assisted
+  code generation, iterative debugging, and structural review.
+  \item \textbf{Methodological cross-checks.}
+  The design of the nested inner/outer cross-validation
+  protocol, the choice of statistical tests for comparing
+  multiple classifiers across folds, and the data-leakage
+  prevention strategy (fitting all preprocessing exclusively
+  on the inner training set) were refined through AI-assisted
+  discussion against the relevant literature.
+  \item \textbf{Ablation study design.}
+  The systematic ablation grid isolating the effects of
+  normalization and PCA across the 80 (method, domain,
+  CV mode, preprocessing) configurations was structured
+  with AI assistance. The interpretation of the resulting
+  interactions --- in particular the normalization $\times$ PCA
+  effect for edit-distance and the intrinsic robustness of
+  Three-Cents --- was made by the authors.
+  \item \textbf{LaTeX drafting and structure.}
+  Section drafts, table formatting, mathematical notation,
+  figure design (LSTM cell, BiLSTM architecture, critical
+  difference diagrams), and the overall report structure
+  were refined with AI assistance. All analytical content,
+  interpretations, and conclusions were reviewed, validated,
+  and approved by the authors.
+  \item \textbf{Critical review.}
+  The AI tool was used to perform a simulated critical
+  evaluation of the report prior to submission, identifying
+  inconsistencies between the text and the experimental
+  grids, gaps in the discussion of the research questions
+  (Q1--Q3), and missing references to foundational works.
+\end{itemize}
+All quantitative results reported in this document
+(accuracies, standard deviations, p-values, confusion
+matrices, hyperparameter selections) were produced by
+running the Python pipeline on the gesture datasets of
+Huang et al.~\cite{Huang2019} and verified by the authors
+against the generated raw CSV output files. The AI tool
+did not execute the pipeline directly and did not produce
+any numerical results autonomously. Responsibility for
+the analytical choices, model implementations, statistical
+methodology, and conclusions rests entirely with the authors.
