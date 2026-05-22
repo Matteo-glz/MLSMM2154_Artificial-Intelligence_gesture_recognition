@@ -6,13 +6,13 @@ Dynamic Time Warping (DTW), Edit-distance on quantized symbolic sequences,
 the Three-Cents ($3\mathbb{c}$) recognizer, and a Bidirectional LSTM.
 The three research questions raised in the introduction can now be answered.
 
-\paragraph{Q1 --- Classical vs.\ modern methods.}
+\paragraph{Q1 : Classical vs.\ modern methods.}
 Contrary to the common expectation that neural or more elaborate methods
-should dominate, the Three-Cents recognizer~\cite{Caputo2018} --- a lightweight
-resample--scale--translate template matcher --- achieves the highest
+should dominate, the Three-Cents recognizer~\cite{Caputo2018}, a lightweight
+resample--scale--translate template matcher, achieves the highest
 user-independent accuracy on both domains ($96.3\%$ on domain~1,
 $95.1\%$ on domain~4), outperforming the BiLSTM by a margin of $11$--$25$
-percentage points. This result highlights that the \emph{inductive bias} of
+percentage points. This result highlights that the inductive bias of
 the method matters more than its computational complexity: Three-Cents
 implicitly encodes the relevant invariances (translation, scale, partial
 rotation) that mid-air gesture trajectories satisfy, whereas the BiLSTM must
@@ -21,7 +21,7 @@ The dynamic-programming baselines (DTW, Edit-distance) occupy an intermediate
 range, with DTW consistently outperforming Edit-distance in the
 user-independent regime.
 
-\paragraph{Q2 --- User-independent vs.\ user-dependent accuracy.}
+\paragraph{Q2 : User-independent vs.\ user-dependent accuracy.}
 The user-dependent setting yields systematically higher accuracy for every
 method and every domain, as expected. The gap is most pronounced for
 template-based methods: DTW and Edit-distance improve by up to $38$ percentage
@@ -33,7 +33,7 @@ mode, DTW, Edit-distance, and Three-Cents all approach saturation
 ($\geq 98\%$), confirming that the task becomes near-trivial once
 within-user templates are available.
 
-\paragraph{Q3 --- Is one method statistically superior?}
+\paragraph{Q3 : Is one method statistically superior?}
 Yes. The Friedman test rejects the null hypothesis of equal expected ranks in
 both domains ($p < 0.001$), and Nemenyi and Wilcoxon--Holm post-hoc tests
 consistently identify Three-Cents as the sole method significantly better than
@@ -44,8 +44,8 @@ consistent across both domains.
 The BiLSTM's underperformance is most plausibly a data-size effect: with
 $\sim$1\,000 samples per domain, the network cannot learn the cross-user
 invariances that Three-Cents enforces by design. Training on a larger,
-more diverse cohort --- or augmenting the dataset with synthetic inter-user
-style transfers --- would likely narrow this gap considerably. The ablation
+more diverse cohort, or augmenting the dataset with synthetic inter-user
+style transfers, would likely narrow this gap considerably. The ablation
 study further revealed that PCA applied without prior normalization can
 degrade performance for Edit-distance, a methodological pitfall worth
 flagging for practitioners. Finally, the confusion analysis showed that
@@ -55,10 +55,10 @@ with class-specific augmentation or cost-sensitive training.
 
 From an applied perspective, the lightweight design and cross-user robustness
 of the Three-Cents recognizer make it well-suited for real-time HCI scenarios
-where training data are scarce and computational budget is limited --- such as
+where training data are scarce and computational budget is limited, such as
 gesture control in AR/VR interfaces, smart-home appliances, and accessibility
 tools for users with reduced mobility.
 More broadly, this project illustrates that well-designed, geometry-aware
 feature engineering can rival or surpass end-to-end learned representations
-when labeled data is scarce --- a conclusion that remains practically relevant
+when labeled data is scarce, a conclusion that remains practically relevant
 beyond the specific gesture recognition setting studied here.

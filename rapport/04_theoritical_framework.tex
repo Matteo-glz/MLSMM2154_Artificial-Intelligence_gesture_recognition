@@ -3,7 +3,7 @@
 
 This section introduces the four methods used in our comparative study. We
 first describe the two dynamic-programming baselines (DTW and Edit-distance),
-then the Three-Cents recognizer, and finally the Recurrent Neural Network.
+then the Three-Cents recognizer, and finally the BiLSTM.
 Throughout, we denote the test sequence by
 $\mathcal{X} = (\mathbf{x}_1, \dots, \mathbf{x}_N)$ and a reference (template)
 sequence by $\mathcal{Y} = (\mathbf{y}_1, \dots, \mathbf{y}_M)$, with
@@ -122,7 +122,7 @@ trajectories.
     execution speed.
  
     \item \textbf{Scaling.} The resampled gesture is rescaled using a
-    \emph{uniform} scaling by total arc length. Let $L$ denote the total
+    uniform scaling by total arc length. Let $L$ denote the total
     arc-length of the resampled trajectory:
     \begin{equation}
         L = \sum_{i=1}^{n-1} \lVert \mathbf{r}'_{i+1} - \mathbf{r}'_{i} \rVert_2 .
@@ -224,8 +224,8 @@ Figure~\ref{fig:lstm-cell} summarizes the cell's internal data flow.
 
 A unidirectional LSTM reads the sequence from left to right and classifies
 the gesture using only the causal context up to the current frame. Since
-gesture recognition is an offline task --- the full trajectory is available
-before any decision is made --- this is unnecessarily restrictive. The
+gesture recognition is an offline task, the full trajectory is available
+before any decision is made, this is unnecessarily restrictive. The
 Bidirectional RNN of Schuster and Paliwal~\cite{Schuster1997} runs two
 independent recurrent layers in opposite directions and concatenates their
 hidden states:
