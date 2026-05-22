@@ -31,14 +31,18 @@ training data and the resulting transformation was applied to both training and
 test sets. We tested PCA with $n_{\text{components}} \in \{2, 3\}$ as well
 as the baseline (no PCA, keeping all 3 dimensions). For gestures with
 variable-length trajectories, PCA was applied point-wise, preserving the
-temporal structure.
+temporal structure. PCA was not applied to the BiLSTM, as the network learns its own
+feature representation directly from the resampled 3D coordinates.
  
-\paragraph{Variable-length handling.} Gesture trajectories in both domains
-exhibit variable length (number of points). For methods requiring fixed-length
-input (Three-Cents recognizer), resampling into a fixed number of equidistant
-points was performed as part of the method-specific preprocessing (described
-below). DTW and Edit-distance handle variable-length sequences natively without
-modification.
+\paragraph{Variable-length handling.} Gesture trajectories in
+both domains exhibit variable length (number of
+points). For methods requiring fixed-length input
+(Three-Cents recognizer and BiLSTM), resampling
+into a fixed number of equidistant points was
+performed as part of the method-specific
+preprocessing (described below). DTW and
+Edit-distance handle variable-length sequences
+natively without modification.
  
 % ----------------------------------------------------------------
 \subsection{Vector quantization for edit-distance}
@@ -51,7 +55,7 @@ labels using $k$-means clustering, following the project guidelines.
 \paragraph{Clustering procedure.} For each fold, $k$-means clustering was fit on
 all training gesture points (pooled across all gestures and users) with a fixed
 random seed (42) for reproducibility. We tested cluster counts
-$K \in \{15, 20, 25, 30, 35, 40, 45, 50, 55, 60\}$ to identify the optimal
+$K \in \{15, 20, 25, 30, 35, 40\}$ to identify the optimal
 discretization granularity. After fitting, each point in both training and test
 sets was assigned to the nearest cluster centroid, transforming each gesture
 into a string of cluster labels (e.g., $A \to A \to B \to C \to \dots$).
@@ -105,18 +109,26 @@ grid search over the inner validation set, covering hyperparameters specific to
 each method:
 
 \begin{itemize}\itemsep 0em
-    \item \textbf{Edit-distance:} $K \in \{15, 20, 25, 30, 35, 40\}$ (cluster count),
-    compression $\in \{\text{True, False}\}$, and $k \in \{1, 3, 5, 7\}$ for
-    $k$-NN.
+    \item \textbf{Edit-distance:} $K \in \{15, 20, 25, 30, 35, 40\}$
+    (cluster count), compression $\in \{\text{True, False}\}$,
+    $k \in \{1, 3, 5, 7\}$ for $k$-NN, and
+    $n_{\text{components}} \in \{\text{no PCA}, 2, 3\}$.
 
-    \item \textbf{DTW:} $k \in \{1, 3, 5, 7\}$ for $k$-NN; no method-specific
-    hyperparameters.
+    \item \textbf{DTW:} $k \in \{1, 3, 5, 7\}$ for $k$-NN and
+    $n_{\text{components}} \in \{\text{no PCA}, 2, 3\}$;
+    no method-specific hyperparameters.
 
-    \item \textbf{Three-Cents:} resampling to $n_{\text{points}}
-    \in \{16, 32, 64\}$ equidistant points.
+    \item \textbf{Three-Cents:} $n_{\text{points}} \in \{16, 32, 64\}$
+    equidistant points and
+    $n_{\text{components}} \in \{\text{no PCA}, 2, 3\}$.
 
-    \item \textbf{PCA:} $n_{\text{components}} \in \{\text{no PCA}, 2, 3\}$
-    applied to all methods.
+    \item \textbf{BiLSTM:} the number of resampled time steps
+    $T \in \{16, 32, 64\}$ and the number of hidden units per
+    direction $h \in \{16, 32, 64\}$ were tuned by grid search.
+    The following architectural parameters were fixed throughout:
+    dropout rate $p = 0.30$, batch size $= 16$, maximum epochs
+    $= 50$ with early stopping (patience $= 5$, monitoring
+    validation loss). No PCA was applied.
 \end{itemize}
 
 For each outer fold, we computed inner-validation accuracy for all

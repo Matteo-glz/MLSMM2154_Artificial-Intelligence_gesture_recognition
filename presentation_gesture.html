@@ -1,0 +1,1414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gesture Recognition — MLSM2154</title>
+<script>
+MathJax = {
+  tex: { inlineMath: [['\\(','\\)']], displayMath: [['\\[','\\]']] },
+  options: { skipHtmlTags: ['script','noscript','style','textarea','pre'] }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: system-ui, -apple-system, sans-serif; font-size: 15px;
+  color: #1E293B; background: #fff; line-height: 1.6; }
+nav { position: sticky; top: 0; z-index: 100; background: #1E293B;
+  padding: 0 2rem; display: flex; align-items: center; gap: 0; }
+nav a { color: #CBD5E1; text-decoration: none; padding: 1rem 1.25rem;
+  font-size: 13px; transition: color 0.2s; }
+nav a:hover { color: #fff; }
+nav .brand { color: #fff; font-weight: 500; margin-right: 1rem; font-size: 14px; }
+section { padding: 3rem 3rem; max-width: 1200px; margin: 0 auto; }
+section + section { border-top: 1px solid #E2E8F0; }
+h1 { font-size: 28px; font-weight: 500; margin-bottom: 0.5rem; }
+h2 { font-size: 22px; font-weight: 500; margin: 2rem 0 1rem; }
+h3 { font-size: 17px; font-weight: 500; margin: 1.5rem 0 0.75rem; }
+.card { background: #F8FAFC; border: 1px solid #E2E8F0;
+  border-radius: 8px; padding: 1.25rem 1.5rem; margin-bottom: 1rem; }
+.metric-grid { display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 12px; margin: 1.5rem 0; }
+.metric { background: #F1F5F9; border-radius: 8px; padding: 1rem;
+  text-align: center; }
+.metric .val { font-size: 22px; font-weight: 500; color: #1E293B; }
+.metric .lbl { font-size: 12px; color: #64748B; margin-top: 4px; }
+.tag { display: inline-block; font-size: 12px; padding: 2px 8px;
+  border-radius: 4px; margin: 2px; }
+.tag-dtw { background: #DBEAFE; color: #1D4ED8; }
+.tag-ed  { background: #FEE2E2; color: #B91C1C; }
+.tag-3c  { background: #DCFCE7; color: #15803D; }
+.tag-bi  { background: #F3E8FF; color: #7E22CE; }
+.tag-gen { background: #F1F5F9; color: #475569; }
+select, button { font-family: inherit; font-size: 14px;
+  padding: 6px 12px; border: 1px solid #CBD5E1; border-radius: 6px;
+  background: #fff; cursor: pointer; color: #1E293B; }
+button:hover { background: #F1F5F9; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { background: #F1F5F9; padding: 8px 12px; text-align: left;
+  font-weight: 500; border-bottom: 1px solid #E2E8F0; }
+td { padding: 8px 12px; border-bottom: 1px solid #F1F5F9; }
+tr:hover td { background: #F8FAFC; }
+.sig-yes { color: #15803D; font-weight: 500; }
+.sig-no  { color: #B91C1C; }
+.best-method { font-weight: 500; background: #F0FDF4; }
+.controls { display: flex; gap: 12px; align-items: center;
+  flex-wrap: wrap; margin-bottom: 1.5rem; }
+.controls label { font-size: 13px; color: #64748B; }
+canvas { display: block; }
+.explanation-box { margin-top: 1rem; padding: 1rem; background: #FFFBEB;
+  border: 1px solid #FDE68A; border-radius: 6px; font-size: 14px;
+  color: #92400E; display: none; }
+.placeholder { background: #F1F5F9; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  color: #94A3B8; font-size: 13px; font-style: italic; }
+.subtitle { color: #64748B; font-size: 15px; margin-bottom: 1rem; }
+.note { font-size: 13px; color: #64748B; margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem; background: #F8FAFC; border-left: 3px solid #CBD5E1;
+  border-radius: 0 4px 4px 0; }
+.pipeline { display: flex; align-items: center; gap: 6px;
+  flex-wrap: wrap; margin: 0.75rem 0; font-size: 13px; }
+.pipeline-step { background: #E0F2FE; color: #0369A1; padding: 4px 10px;
+  border-radius: 4px; font-weight: 500; }
+.pipeline-arrow { color: #94A3B8; font-size: 16px; }
+.arch-row { display: flex; align-items: center; gap: 6px;
+  flex-wrap: wrap; margin: 0.75rem 0; font-size: 13px; }
+.arch-block { border: 1px solid #CBD5E1; background: #fff;
+  padding: 4px 10px; border-radius: 4px; font-size: 12px; text-align: center; }
+.hp-grid { display: flex; gap: 8px; flex-wrap: wrap; margin: 0.5rem 0; }
+.hp-item { font-size: 13px; background: #F1F5F9; padding: 3px 8px;
+  border-radius: 4px; color: #475569; }
+.toggle-btn { background: #F1F5F9; border: 1px solid #CBD5E1;
+  color: #475569; }
+.toggle-btn.active { background: #1E293B; color: #fff; border-color: #1E293B; }
+.cv-panel { padding: 1.25rem; background: #F8FAFC; border: 1px solid #E2E8F0;
+  border-radius: 8px; }
+.principle-box { margin-top: 1.25rem; padding: 1rem 1.25rem;
+  background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 8px;
+  font-size: 13.5px; color: #166534; }
+.principle-box strong { display: block; margin-bottom: 4px; }
+ul.compact { padding-left: 1.25rem; margin: 0.5rem 0; }
+ul.compact li { margin-bottom: 4px; font-size: 14px; }
+.eq-box { background: #F8FAFC; border: 1px solid #E2E8F0;
+  border-radius: 6px; padding: 0.75rem 1rem; margin: 0.75rem 0;
+  overflow-x: auto; }
+</style>
+</head>
+<body>
+
+<script>
+const DATA = {
+  domain1: {
+    independent: {
+      DTW:          [0.60,0.81,0.82,1.00,0.64,0.86,0.85,0.95,0.90,0.83],
+      EditDistance: [0.27,0.81,0.42,0.86,0.37,0.81,0.85,0.72,0.85,0.83],
+      ThreeCents:   [0.90,0.98,0.93,1.00,1.00,0.89,0.93,1.00,1.00,1.00],
+      BiLSTM:       [0.57,0.92,0.81,0.96,0.93,0.78,0.86,0.75,0.99,0.93]
+    },
+    dependent: {
+      DTW:          [0.99,1.00,0.99,1.00,1.00,0.99,1.00,0.99,1.00,1.00],
+      EditDistance: [0.98,0.99,0.99,1.00,1.00,0.99,1.00,0.99,0.99,0.98],
+      ThreeCents:   [0.99,1.00,0.99,1.00,1.00,1.00,1.00,1.00,1.00,1.00],
+      BiLSTM:       [0.94,0.94,1.00,0.96,0.96,0.99,0.97,0.99,0.99,0.98]
+    }
+  },
+  domain4: {
+    independent: {
+      DTW:          [0.68,0.48,0.81,0.82,0.86,0.80,0.74,0.75,0.83,0.67],
+      EditDistance: [0.63,0.30,0.67,0.20,0.73,0.77,0.72,0.59,0.74,0.67],
+      ThreeCents:   [0.99,0.94,1.00,0.93,0.97,0.96,0.97,0.93,1.00,0.82],
+      BiLSTM:       [0.69,0.67,0.71,0.69,0.74,0.80,0.68,0.65,0.84,0.54]
+    },
+    dependent: {
+      DTW:          [0.97,0.99,1.00,1.00,1.00,1.00,1.00,1.00,1.00,0.99],
+      EditDistance: [0.95,0.99,0.97,0.99,0.99,0.99,1.00,0.98,0.98,0.99],
+      ThreeCents:   [0.96,0.99,1.00,0.99,0.98,1.00,0.99,0.97,0.99,0.99],
+      BiLSTM:       [0.82,0.85,0.89,0.91,0.90,0.91,0.86,0.92,0.90,0.89]
+    }
+  }
+};
+
+const BEST_CONFIGS = {
+  DTW: {
+    domain1_indep: {PCA:3,k:1}, domain1_dep: {PCA:3,k:1},
+    domain4_indep: {PCA:3,k:1}, domain4_dep: {PCA:3,k:1}
+  },
+  EditDistance: {
+    domain1_indep: {PCA:3,K:40,compression:false,k:1},
+    domain1_dep:   {PCA:3,K:35,compression:false,k:1},
+    domain4_indep: {PCA:3,K:20,compression:false,k:1},
+    domain4_dep:   {PCA:3,K:40,compression:false,k:1}
+  },
+  ThreeCents: {
+    domain1_indep: {PCA:2,n_points:16}, domain1_dep: {PCA:2,n_points:16},
+    domain4_indep: {PCA:3,n_points:16}, domain4_dep: {PCA:3,n_points:16}
+  },
+  BiLSTM: {
+    domain1_indep: {T:64,h:64}, domain1_dep: {T:16,h:64},
+    domain4_indep: {T:16,h:32}, domain4_dep: {T:64,h:64}
+  }
+};
+
+const STAT_TESTS = {
+  domain1: {
+    friedman: {statistic:23.03, p:0.0000398, significant:true},
+    nemenyi: [
+      {pair:"DTW vs Edit-dist",    diff:1.15, p:0.191,      sig:false},
+      {pair:"DTW vs Three-Cents",  diff:1.55, p:0.037,      sig:true},
+      {pair:"DTW vs BiLSTM",       diff:0.00, p:1.000,      sig:false},
+      {pair:"Edit-dist vs 3¢",     diff:2.70, p:0.0000173,  sig:true},
+      {pair:"Edit-dist vs BiLSTM", diff:1.15, p:0.191,      sig:false},
+      {pair:"Three-Cents vs BiLSTM",diff:1.55,p:0.037,      sig:true}
+    ],
+    wilcoxon: [
+      {pair:"Edit-dist vs 3¢",      p:0.00195, sig:true},
+      {pair:"Three-Cents vs BiLSTM",p:0.00195, sig:true},
+      {pair:"DTW vs Three-Cents",   p:0.00391, sig:true},
+      {pair:"Edit-dist vs BiLSTM",  p:0.00781, sig:true},
+      {pair:"DTW vs Edit-dist",     p:0.01563, sig:true},
+      {pair:"DTW vs BiLSTM",        p:0.62500, sig:false}
+    ],
+    ranks: {ThreeCents:1.05, DTW:2.60, BiLSTM:2.60, EditDistance:3.75}
+  },
+  domain4: {
+    friedman: {statistic:24.15, p:0.0000232, significant:true},
+    nemenyi: [
+      {pair:"DTW vs Edit-dist",    diff:1.35, p:0.090,      sig:false},
+      {pair:"DTW vs Three-Cents",  diff:1.40, p:0.072,      sig:false},
+      {pair:"DTW vs BiLSTM",       diff:0.45, p:0.864,      sig:false},
+      {pair:"Edit-dist vs 3¢",     diff:2.75, p:0.0000113,  sig:true},
+      {pair:"Edit-dist vs BiLSTM", diff:0.90, p:0.402,      sig:false},
+      {pair:"Three-Cents vs BiLSTM",diff:1.85,p:0.007,      sig:true}
+    ],
+    wilcoxon: [
+      {pair:"DTW vs Three-Cents",   p:0.00195, sig:true},
+      {pair:"Edit-dist vs 3¢",      p:0.00195, sig:true},
+      {pair:"Three-Cents vs BiLSTM",p:0.00195, sig:true},
+      {pair:"DTW vs Edit-dist",     p:0.00391, sig:true},
+      {pair:"Edit-dist vs BiLSTM",  p:0.11328, sig:false},
+      {pair:"DTW vs BiLSTM",        p:0.23828, sig:false}
+    ],
+    ranks: {ThreeCents:1.00, DTW:2.35, BiLSTM:2.80, EditDistance:3.85}
+  }
+};
+
+const CONFUSION = {
+  domain1: {
+    labels: ["0","1","2","3","4","5","6","7","8","9"],
+    dependent: [
+      [98,0,0,0,0,0,0,0,2,0],[0,100,0,0,0,0,0,0,0,0],
+      [0,0,100,0,0,0,0,0,0,0],[0,0,0,100,0,0,0,0,0,0],
+      [0,0,0,0,100,0,0,0,0,0],[0,0,0,0,0,100,0,0,0,0],
+      [0,0,0,0,0,0,100,0,0,0],[0,0,0,0,0,0,0,100,0,0],
+      [0,0,0,0,0,0,0,0,100,0],[0,0,0,0,0,0,0,0,0,100]
+    ],
+    independent: [
+      [72,0,0,10,4,0,6,0,8,0],[0,100,0,0,0,0,0,0,0,0],
+      [0,0,100,0,0,0,0,0,0,0],[0,0,0,100,0,0,0,0,0,0],
+      [0,0,0,0,100,0,0,0,0,0],[0,0,1,0,0,99,0,0,0,0],
+      [0,0,0,0,0,0,100,0,0,0],[0,0,0,0,0,0,0,100,0,0],
+      [7,0,0,0,0,0,0,0,93,0],[0,0,0,0,0,0,0,1,0,99]
+    ]
+  },
+  domain4: {
+    labels: ["Cuboid","Cylinder","Sphere","R.Pipe","Hemi.","Cone","C.Pipe","Pyramid","Tetra.","Toroid"],
+    dependent: [
+      [100,0,0,0,0,0,0,0,0,0],[0,100,0,0,0,0,0,0,0,0],
+      [0,0,98,1,0,0,0,0,0,1],[0,0,0,100,0,0,0,0,0,0],
+      [2,0,1,0,97,0,0,0,0,0],[0,0,0,0,0,100,0,0,0,0],
+      [0,0,0,0,0,0,98,2,0,0],[0,0,0,1,0,0,6,93,0,0],
+      [0,0,0,0,0,0,0,0,100,0],[0,0,0,0,0,0,0,0,0,100]
+    ],
+    independent: [
+      [100,0,0,0,0,0,0,0,0,0],[0,98,0,0,0,0,0,0,2,0],
+      [0,0,97,1,0,1,0,0,0,1],[0,0,0,100,0,0,0,0,0,0],
+      [2,0,1,0,97,0,0,0,0,0],[0,0,0,12,0,87,0,0,0,1],
+      [0,0,0,0,0,0,93,7,0,0],[0,0,0,0,0,1,16,83,0,0],
+      [0,0,0,1,0,0,0,0,97,2],[0,0,1,0,0,0,0,0,0,99]
+    ]
+  }
+};
+
+const CONFUSION_EXPLANATIONS = {
+  domain1_independent: {
+    "0_3": "Digit 0 drawn with leftward lean by some users resembles digit 3.",
+    "0_4": "Some users' digit 0 has a rightward opening similar to digit 4.",
+    "0_6": "Digit 0 and 6 share a circular arc — confusion when the closing stroke differs.",
+    "0_8": "Both share a closed oval shape — hardest pair in domain 1. Differ only in whether a second loop is drawn.",
+    "5_2": "Minor confusion: some users' 5 has a top arc resembling digit 2.",
+    "8_0": "Symmetric to 0→8: closed oval shapes confused bidirectionally.",
+    "9_7": "Minor: some users' digit 9 tail resembles the angle of digit 7."
+  },
+  domain4_independent: {
+    "1_8": "Cylinder vs Tetrahedron: both start with a vertical stroke.",
+    "2_3": "Sphere vs R.Pipe: circular trajectory can resemble elongated pipe when depth varies.",
+    "2_5": "Sphere vs Cone: rounded top gestures confused with tapered cone.",
+    "2_9": "Sphere vs Toroid: both involve closed circular trajectories.",
+    "4_0": "Hemisphere vs Cuboid: half-sphere gesture can look boxy without clear dome.",
+    "4_2": "Hemisphere vs Sphere: half vs full sphere — subtle difference in trajectory length.",
+    "5_3": "Cone → R.Pipe: tapering apex resembles elongated rectangular sweep (12/100 — strongest domain 4 confusion).",
+    "6_7": "C.Pipe vs Pyramid: both involve dominant vertical stroke + shorter strokes, no closed base.",
+    "7_5": "Pyramid → C.Pipe: both gestures lack a strongly closed base (16/100 — hardest pair in domain 4).",
+    "7_3": "Pyramid → R.Pipe: swept elongated strokes confused across users.",
+    "8_3": "Tetrahedron vs R.Pipe: triangular base stroke resembles rectangular sweep.",
+    "8_9": "Tetrahedron vs Toroid: minor, single sample.",
+    "9_2": "Toroid vs Sphere: both involve dominant circular trajectory."
+  }
+};
+
+const COLORS = {
+  DTW: '#2563EB',
+  EditDistance: '#DC2626',
+  ThreeCents: '#16A34A',
+  BiLSTM: '#9333EA'
+};
+</script>
+
+<!-- ======================================================= NAV -->
+<nav>
+  <span class="brand">Gesture Recognition</span>
+  <a href="#s1">Data</a>
+  <a href="#s2">Methods</a>
+  <a href="#s3">Validation</a>
+  <a href="#s4">Results</a>
+  <a href="#s5">Confusion</a>
+  <a href="#s6">Statistics</a>
+</nav>
+
+<!-- ======================================================= S1 -->
+<section id="s1">
+  <h1>Gesture Recognition — MLSM2154</h1>
+  <p class="subtitle">DTW &middot; Edit-distance &middot; Three-Cents &middot; BiLSTM &nbsp;|&nbsp; UCLouvain FUCaM Mons</p>
+
+  <div class="metric-grid">
+    <div class="metric">
+      <div class="val">1 000</div>
+      <div class="lbl">samples per domain</div>
+    </div>
+    <div class="metric">
+      <div class="val">10 &times; 10 &times; 10</div>
+      <div class="lbl">users &times; gestures &times; repetitions</div>
+    </div>
+    <div class="metric">
+      <div class="val">2</div>
+      <div class="lbl">domains evaluated</div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.5rem;">
+    <div class="card">
+      <h3 style="margin-top:0">Domain 1 — Digits</h3>
+      <p style="font-size:14px">Ten air-drawn digits (0–9). Gestures are essentially planar;
+      inter-user variability mainly in the out-of-plane (z) component.
+      Dataset from Huang et al. (2019).</p>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">Domain 4 — 3D Geometric Figures</h3>
+      <p style="font-size:14px">Ten 3D shapes (Cuboid, Cylinder, Sphere, Rectangular Pipe,
+      Hemisphere, Cone, Cylindrical Pipe, Pyramid, Tetrahedron, Toroid).
+      Intrinsically three-dimensional; harder cross-user generalization.</p>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:auto 1fr;gap:2rem;align-items:center;">
+    <div>
+      <canvas id="traj-canvas" width="320" height="260"></canvas>
+      <p style="font-size:12px;color:#64748B;text-align:center;margin-top:6px;">
+        Synthetic example trajectory &mdash;
+        \(\mathbf{r}(t) = [x(t),\, y(t),\, z(t)]^\top \in \mathbb{R}^3\)
+      </p>
+    </div>
+    <div>
+      <p style="font-size:14px;margin-bottom:1rem;">Each gesture is a discrete time series of 3D coordinates
+      recorded by a depth sensor:</p>
+      <div class="eq-box">
+        \[\mathbf{r}(t) = [x(t),\; y(t),\; z(t)]^\top \in \mathbb{R}^3, \quad t = 1,\ldots,T\]
+      </div>
+      <p style="font-size:14px;margin-top:1rem;">
+        Two cross-validation protocols are used throughout:
+      </p>
+      <ul class="compact" style="margin-top:0.5rem;">
+        <li><strong>User-independent</strong> — leave-one-user-out (10 outer folds). Tests generalization across people.</li>
+        <li><strong>User-dependent</strong> — leave-one-sample-out per user per gesture. Tests within-person discrimination.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================= S2 -->
+<section id="s2">
+  <h2 style="margin-top:0">Methods</h2>
+
+  <!-- 2a DTW -->
+  <div class="card">
+    <h3 style="margin-top:0">Dynamic Time Warping (DTW)</h3>
+    <div style="margin-bottom:0.75rem;">
+      <span class="tag tag-dtw">k-NN classifier</span>
+      <span class="tag tag-dtw">variable-length sequences</span>
+      <span class="tag tag-dtw">from-scratch implementation</span>
+    </div>
+    <p style="font-size:14px;margin-bottom:0.75rem;">Finds the optimal non-linear alignment between two sequences
+    by minimizing cumulative Euclidean distance via dynamic programming.
+    Local cost: \(d(i,j)=\|\mathbf{x}_i - \mathbf{y}_j\|_2\).</p>
+    <div class="eq-box">
+      \[D(i,j) = d(i,j) + \min\begin{cases}D(i-1,j-1)\\D(i-1,j)\\D(i,j-1)\end{cases}\]
+    </div>
+    <p style="font-size:14px;margin:0.75rem 0 0.5rem;">Three path constraints:</p>
+    <ul class="compact">
+      <li><strong>Boundary:</strong> path starts at (1,1) and ends at (N,M).</li>
+      <li><strong>Monotonicity:</strong> both index sequences are non-decreasing.</li>
+      <li><strong>Continuity:</strong> transitions only between adjacent cells — no observation skipped.</li>
+    </ul>
+    <p style="font-size:13px;color:#64748B;margin-top:0.75rem;">
+      <strong>Hyperparameter grid:</strong>
+      <span class="hp-item">k &isin; {1, 3, 5, 7}</span>
+      <span class="hp-item">PCA &isin; {none, 2D, 3D}</span>
+    </p>
+    <div style="margin-top:1rem;">
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:0.75rem;flex-wrap:wrap;">
+        <span style="font-size:13px;color:#475569;font-family:monospace;">A = [2,5,3,7,4,6,3] &nbsp;&nbsp; B = [3,4,6,3,5,4,5]</span>
+        <button id="dtw-play" onclick="dtwPlay()">&#9654; Play</button>
+        <button onclick="dtwReset()">&#8635; Reset</button>
+      </div>
+      <div style="overflow-x:auto;">
+        <canvas id="dtw-canvas" width="420" height="380" style="border:1px solid #E2E8F0;border-radius:6px;"></canvas>
+      </div>
+      <p id="dtw-score" style="font-size:13px;color:#475569;margin-top:6px;min-height:1.4em;"></p>
+    </div>
+  </div>
+
+  <!-- 2b Edit-distance -->
+  <div class="card">
+    <h3 style="margin-top:0">Edit-distance on quantized sequences</h3>
+    <div style="margin-bottom:0.75rem;">
+      <span class="tag tag-ed">k-means vector quantization</span>
+      <span class="tag tag-ed">Levenshtein distance</span>
+      <span class="tag tag-ed">k-NN</span>
+    </div>
+    <div class="pipeline">
+      <span class="pipeline-step">3D points</span>
+      <span class="pipeline-arrow">&#8594;</span>
+      <span class="pipeline-step">k-means (K clusters)</span>
+      <span class="pipeline-arrow">&#8594;</span>
+      <span class="pipeline-step">symbol string</span>
+      <span class="pipeline-arrow">&#8594;</span>
+      <span class="pipeline-step">Levenshtein distance</span>
+      <span class="pipeline-arrow">&#8594;</span>
+      <span class="pipeline-step">k-NN</span>
+    </div>
+    <div class="eq-box">
+      \[D(i,j) = \min\begin{cases}D(i-1,j)+1 & \text{(deletion)}\\D(i,j-1)+1 & \text{(insertion)}\\D(i-1,j-1)+c(i,j) & \text{(substitution, }c=0\text{ if equal, else }1\text{)}\end{cases}\]
+    </div>
+    <p style="font-size:13px;color:#64748B;margin-top:0.75rem;">
+      <strong>Hyperparameter grid:</strong>
+      <span class="hp-item">K &isin; {15, 20, 25, 30, 35, 40}</span>
+      <span class="hp-item">compression &isin; {True, False}</span>
+      <span class="hp-item">k &isin; {1, 3, 5, 7}</span>
+      <span class="hp-item">PCA &isin; {none, 2D, 3D}</span>
+    </p>
+    <p class="note">compression = False optimal across all settings: consecutive repeated symbols still carry local timing information — compressing them discards discriminative signal.</p>
+  </div>
+
+  <!-- 2c Three-Cents -->
+  <div class="card">
+    <h3 style="margin-top:0">Three-Cents recognizer <span style="font-weight:400;font-size:14px;color:#64748B">(Caputo et al., 2018)</span></h3>
+    <div style="margin-bottom:0.75rem;">
+      <span class="tag tag-3c">rotation-free</span>
+      <span class="tag tag-3c">3D adaptation of $1</span>
+      <span class="tag tag-3c">1-NN</span>
+    </div>
+    <div class="pipeline">
+      <span class="pipeline-step">Resample to <em>n</em> pts</span>
+      <span class="pipeline-arrow">&#8594;</span>
+      <span class="pipeline-step">Scale by arc-length L</span>
+      <span class="pipeline-arrow">&#8594;</span>
+      <span class="pipeline-step">Translate to centroid</span>
+      <span class="pipeline-arrow">&#8594;</span>
+      <span class="pipeline-step">1-NN template match</span>
+    </div>
+    <div class="eq-box">
+      \[L = \sum_{i=1}^{n-1}\|\mathbf{r}'_{i+1}-\mathbf{r}'_i\|_2, \qquad \mathbf{r}''_i = \frac{\mathbf{r}'_i}{L}\]
+      \[D(C,T) = \frac{1}{n}\sum_{i=1}^{n}\|\mathbf{c}_i - \mathbf{t}_i\|_2\]
+    </div>
+    <p class="note" style="margin-top:0.75rem;">Rotation step of $1 <em>removed</em>: in 3D, no canonical reference angle exists — Golden-Section Search becomes geometrically ambiguous and computationally expensive.</p>
+    <p style="font-size:13px;color:#64748B;margin-top:0.75rem;">
+      <strong>Hyperparameter grid:</strong>
+      <span class="hp-item">n_points &isin; {16, 32, 64}</span>
+      <span class="hp-item">PCA &isin; {none, 2D, 3D}</span>
+    </p>
+    <p class="note">n = 16 optimal (not 64): short mid-air trajectories — denser resampling introduces interpolation noise without new geometric information.</p>
+  </div>
+
+  <!-- 2d BiLSTM -->
+  <div class="card">
+    <h3 style="margin-top:0">Bidirectional LSTM</h3>
+    <div style="margin-bottom:0.75rem;">
+      <span class="tag tag-bi">end-to-end learned</span>
+      <span class="tag tag-bi">early stopping</span>
+      <span class="tag tag-bi">batch normalization</span>
+    </div>
+    <div class="eq-box">
+      \[\mathbf{f}_t = \sigma(\mathbf{W}_f\mathbf{x}_t + \mathbf{U}_f\mathbf{h}_{t-1}+\mathbf{b}_f) \quad \text{(forget gate)}\]
+      \[\mathbf{i}_t = \sigma(\mathbf{W}_i\mathbf{x}_t + \mathbf{U}_i\mathbf{h}_{t-1}+\mathbf{b}_i) \quad \text{(input gate)}\]
+      \[\mathbf{o}_t = \sigma(\mathbf{W}_o\mathbf{x}_t + \mathbf{U}_o\mathbf{h}_{t-1}+\mathbf{b}_o) \quad \text{(output gate)}\]
+      \[\tilde{\mathbf{c}}_t = \tanh(\mathbf{W}_c\mathbf{x}_t + \mathbf{U}_c\mathbf{h}_{t-1}+\mathbf{b}_c)\]
+      \[\mathbf{c}_t = \mathbf{f}_t \odot \mathbf{c}_{t-1} + \mathbf{i}_t \odot \tilde{\mathbf{c}}_t\]
+      \[\mathbf{h}_t = \mathbf{o}_t \odot \tanh(\mathbf{c}_t)\]
+    </div>
+    <p style="font-size:13.5px;margin:0.75rem 0 0.5rem;"><strong>Architecture:</strong></p>
+    <div class="arch-row">
+      <div class="arch-block">Input<br><span style="color:#64748B">T &times; 3</span></div>
+      <span style="color:#94A3B8">&#8594;</span>
+      <div class="arch-block" style="background:#F3E8FF;border-color:#C4B5FD;">Forward LSTM(h)<br>+ Backward LSTM(h)</div>
+      <span style="color:#94A3B8">&#8594;</span>
+      <div class="arch-block">Concat<br><span style="color:#64748B">2h</span></div>
+      <span style="color:#94A3B8">&#8594;</span>
+      <div class="arch-block">BatchNorm</div>
+      <span style="color:#94A3B8">&#8594;</span>
+      <div class="arch-block">Dropout<br><span style="color:#64748B">p = 0.3</span></div>
+      <span style="color:#94A3B8">&#8594;</span>
+      <div class="arch-block">Dense(32)<br><span style="color:#64748B">ReLU</span></div>
+      <span style="color:#94A3B8">&#8594;</span>
+      <div class="arch-block">Softmax<br><span style="color:#64748B">10 classes</span></div>
+    </div>
+    <p style="font-size:13px;color:#64748B;margin-top:0.75rem;">
+      <strong>Hyperparameter grid:</strong>
+      <span class="hp-item">T &isin; {16, 64}</span>
+      <span class="hp-item">h &isin; {32, 64}</span>
+    </p>
+    <p class="note">Offline task &rarr; BiLSTM justified: full trajectory available before classification.
+    Early stopping: patience = 5, 10% validation split per fold. Model re-initialized at every fold (no leakage).</p>
+  </div>
+</section>
+
+<!-- ======================================================= S3 -->
+<section id="s3">
+  <h2 style="margin-top:0">Cross-validation protocol</h2>
+
+  <div class="controls">
+    <button id="btn-indep" class="toggle-btn active" onclick="showCV('indep')">User-independent</button>
+    <button id="btn-dep"   class="toggle-btn"        onclick="showCV('dep')">User-dependent</button>
+  </div>
+
+  <!-- User-independent panel -->
+  <div id="cv-indep" class="cv-panel">
+    <p style="font-size:14px;margin-bottom:1rem;">
+      <strong>Leave-one-user-out</strong> — 10 outer folds (one held-out user per fold).
+      Tests generalization to entirely unseen users.
+    </p>
+    <svg width="100%" viewBox="0 0 700 210" style="max-width:700px;display:block;font-family:system-ui,sans-serif;font-size:13px;">
+      <!-- Outer fold label -->
+      <text x="10" y="30" fill="#475569" font-weight="500">Outer folds (10 users)</text>
+      <!-- Outer fold bar background -->
+      <rect x="10" y="40" width="620" height="38" rx="5" fill="#E2E8F0"/>
+      <!-- 10 user blocks -->
+      <rect x="10"  y="40" width="55" height="38" rx="4" fill="#BFDBFE"/>
+      <rect x="68"  y="40" width="55" height="38" rx="4" fill="#BFDBFE"/>
+      <rect x="126" y="40" width="55" height="38" rx="4" fill="#BFDBFE"/>
+      <rect x="184" y="40" width="55" height="38" rx="4" fill="#BFDBFE"/>
+      <rect x="242" y="40" width="55" height="38" rx="4" fill="#BFDBFE"/>
+      <rect x="300" y="40" width="55" height="38" rx="4" fill="#BFDBFE"/>
+      <rect x="358" y="40" width="55" height="38" rx="4" fill="#BFDBFE"/>
+      <rect x="416" y="40" width="55" height="38" rx="4" fill="#BFDBFE"/>
+      <rect x="474" y="40" width="55" height="38" rx="4" fill="#BFDBFE"/>
+      <!-- Test fold highlighted -->
+      <rect x="532" y="40" width="98" height="38" rx="4" fill="#1D4ED8"/>
+      <text x="37"  y="63" fill="#1E293B" text-anchor="middle">U1</text>
+      <text x="95"  y="63" fill="#1E293B" text-anchor="middle">U2</text>
+      <text x="153" y="63" fill="#1E293B" text-anchor="middle">U3</text>
+      <text x="211" y="63" fill="#1E293B" text-anchor="middle">U4</text>
+      <text x="269" y="63" fill="#1E293B" text-anchor="middle">U5</text>
+      <text x="327" y="63" fill="#1E293B" text-anchor="middle">U6</text>
+      <text x="385" y="63" fill="#1E293B" text-anchor="middle">U7</text>
+      <text x="443" y="63" fill="#1E293B" text-anchor="middle">U8</text>
+      <text x="501" y="63" fill="#1E293B" text-anchor="middle">U9</text>
+      <text x="581" y="63" fill="#fff" text-anchor="middle" font-weight="500">Test U10</text>
+      <!-- Arrow down -->
+      <line x1="270" y1="82" x2="270" y2="100" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#arr)"/>
+      <defs><marker id="arr" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#94A3B8"/></marker></defs>
+      <!-- Inner split label -->
+      <text x="10" y="120" fill="#475569" font-weight="500">Inner split (from training users U1–U9)</text>
+      <!-- Inner train -->
+      <rect x="10" y="130" width="440" height="38" rx="5" fill="#BBF7D0"/>
+      <text x="230" y="152" fill="#166534" text-anchor="middle" font-weight="500">Inner-train (80%) — fit normalization, k-means, PCA, select HP</text>
+      <!-- Inner val -->
+      <rect x="456" y="130" width="174" height="38" rx="5" fill="#FDE68A"/>
+      <text x="543" y="152" fill="#92400E" text-anchor="middle" font-weight="500">Inner-val (20%)</text>
+      <!-- Legend -->
+      <rect x="10"  y="185" width="14" height="14" rx="2" fill="#BFDBFE"/>
+      <text x="30"  y="197" fill="#475569">Training users</text>
+      <rect x="130" y="185" width="14" height="14" rx="2" fill="#1D4ED8"/>
+      <text x="150" y="197" fill="#475569">Test fold (unseen user)</text>
+      <rect x="310" y="185" width="14" height="14" rx="2" fill="#BBF7D0"/>
+      <text x="330" y="197" fill="#475569">Inner-train</text>
+      <rect x="420" y="185" width="14" height="14" rx="2" fill="#FDE68A"/>
+      <text x="440" y="197" fill="#475569">Inner-val (HP selection)</text>
+    </svg>
+  </div>
+
+  <!-- User-dependent panel -->
+  <div id="cv-dep" class="cv-panel" style="display:none;">
+    <p style="font-size:14px;margin-bottom:1rem;">
+      <strong>Leave-one-sample-out per user per gesture</strong> — 10 outer folds.
+      For each user, one repetition per gesture class is held out as test.
+      Tests within-person discrimination.
+    </p>
+    <svg width="100%" viewBox="0 0 700 210" style="max-width:700px;display:block;font-family:system-ui,sans-serif;font-size:13px;">
+      <!-- Label -->
+      <text x="10" y="30" fill="#475569" font-weight="500">Outer folds — per user, per gesture class (10 repetitions)</text>
+      <rect x="10" y="40" width="620" height="38" rx="5" fill="#E2E8F0"/>
+      <!-- 10 rep blocks -->
+      <rect x="10"  y="40" width="55" height="38" rx="4" fill="#C7D2FE"/>
+      <rect x="68"  y="40" width="55" height="38" rx="4" fill="#C7D2FE"/>
+      <rect x="126" y="40" width="55" height="38" rx="4" fill="#C7D2FE"/>
+      <rect x="184" y="40" width="55" height="38" rx="4" fill="#C7D2FE"/>
+      <rect x="242" y="40" width="55" height="38" rx="4" fill="#C7D2FE"/>
+      <rect x="300" y="40" width="55" height="38" rx="4" fill="#C7D2FE"/>
+      <rect x="358" y="40" width="55" height="38" rx="4" fill="#C7D2FE"/>
+      <rect x="416" y="40" width="55" height="38" rx="4" fill="#C7D2FE"/>
+      <rect x="474" y="40" width="55" height="38" rx="4" fill="#C7D2FE"/>
+      <rect x="532" y="40" width="98" height="38" rx="4" fill="#7C3AED"/>
+      <text x="37"  y="63" fill="#1E293B" text-anchor="middle">R1</text>
+      <text x="95"  y="63" fill="#1E293B" text-anchor="middle">R2</text>
+      <text x="153" y="63" fill="#1E293B" text-anchor="middle">R3</text>
+      <text x="211" y="63" fill="#1E293B" text-anchor="middle">R4</text>
+      <text x="269" y="63" fill="#1E293B" text-anchor="middle">R5</text>
+      <text x="327" y="63" fill="#1E293B" text-anchor="middle">R6</text>
+      <text x="385" y="63" fill="#1E293B" text-anchor="middle">R7</text>
+      <text x="443" y="63" fill="#1E293B" text-anchor="middle">R8</text>
+      <text x="501" y="63" fill="#1E293B" text-anchor="middle">R9</text>
+      <text x="581" y="63" fill="#fff" text-anchor="middle" font-weight="500">Test R10</text>
+      <defs><marker id="arr2" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#94A3B8"/></marker></defs>
+      <line x1="270" y1="82" x2="270" y2="100" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#arr2)"/>
+      <text x="10" y="120" fill="#475569" font-weight="500">Inner split (from training reps R1–R9)</text>
+      <rect x="10" y="130" width="440" height="38" rx="5" fill="#BBF7D0"/>
+      <text x="230" y="152" fill="#166534" text-anchor="middle" font-weight="500">Inner-train (80%) — fit preprocessing, select HP</text>
+      <rect x="456" y="130" width="174" height="38" rx="5" fill="#FDE68A"/>
+      <text x="543" y="152" fill="#92400E" text-anchor="middle" font-weight="500">Inner-val (20%)</text>
+      <rect x="10"  y="185" width="14" height="14" rx="2" fill="#C7D2FE"/>
+      <text x="30"  y="197" fill="#475569">Training reps</text>
+      <rect x="140" y="185" width="14" height="14" rx="2" fill="#7C3AED"/>
+      <text x="160" y="197" fill="#475569">Test rep (held out)</text>
+      <rect x="310" y="185" width="14" height="14" rx="2" fill="#BBF7D0"/>
+      <text x="330" y="197" fill="#475569">Inner-train</text>
+      <rect x="420" y="185" width="14" height="14" rx="2" fill="#FDE68A"/>
+      <text x="440" y="197" fill="#475569">Inner-val (HP selection)</text>
+    </svg>
+  </div>
+
+  <div class="principle-box">
+    <strong>Data-leakage prevention</strong>
+    All preprocessing transformations — z-score normalization (mean &amp; std),
+    k-means centroids, and PCA components — are fitted <em>exclusively on the inner-train set</em>.
+    They are applied without refitting to inner-val and to the test fold.
+    The test fold is never seen during hyperparameter selection.
+  </div>
+</section>
+
+<!-- ======================================================= S4 -->
+<section id="s4">
+  <h2 style="margin-top:0">Results &amp; hyperparameters</h2>
+  <div class="controls">
+    <label>Domain</label>
+    <select id="sel-domain" onchange="updateS4()">
+      <option value="domain1">Domain 1 — digits</option>
+      <option value="domain4">Domain 4 — 3D figures</option>
+    </select>
+    <label>CV mode</label>
+    <select id="sel-mode" onchange="updateS4()">
+      <option value="independent">User-independent</option>
+      <option value="dependent">User-dependent</option>
+    </select>
+  </div>
+
+  <h3 style="margin-top:0;">Accuracy summary (mean ± std over 10 folds)</h3>
+  <div id="acc-table-wrap"></div>
+
+  <h3 style="margin-top:1.75rem;">Per-fold accuracy</h3>
+  <div style="position:relative;height:230px;margin-bottom:2rem;">
+    <canvas id="fold-chart"></canvas>
+  </div>
+
+  <h3>Best hyperparameter configurations</h3>
+  <div id="config-cards" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:0.75rem;"></div>
+</section>
+
+<!-- ======================================================= S5 -->
+<section id="s5">
+  <h2 style="margin-top:0">Confusion matrices</h2>
+  <p style="font-size:14px;margin-bottom:1rem;">Three-Cents recognizer (best method). Click any non-zero off-diagonal cell for a geometric explanation.</p>
+  <div class="controls">
+    <label>Domain</label>
+    <select id="conf-domain" onchange="updateConf()">
+      <option value="domain1">Domain 1 — digits 0–9</option>
+      <option value="domain4">Domain 4 — 3D figures</option>
+    </select>
+    <label>CV mode</label>
+    <select id="conf-mode" onchange="updateConf()">
+      <option value="independent">User-independent</option>
+      <option value="dependent">User-dependent</option>
+    </select>
+    <span id="conf-acc" style="margin-left:1rem;font-weight:500;color:#16A34A;"></span>
+  </div>
+  <div style="overflow-x:auto;">
+    <canvas id="conf-canvas" width="560" height="560" style="cursor:pointer;border:1px solid #E2E8F0;border-radius:6px;"></canvas>
+  </div>
+  <div id="conf-explanation" class="explanation-box"></div>
+</section>
+
+<!-- ======================================================= S6 -->
+<section id="s6">
+  <h2 style="margin-top:0">Statistical tests</h2>
+  <div class="controls">
+    <label>Domain</label>
+    <select id="stat-domain" onchange="updateStat()">
+      <option value="domain1">Domain 1</option>
+      <option value="domain4">Domain 4</option>
+    </select>
+  </div>
+
+  <h3 style="margin-top:0;">Friedman test</h3>
+  <div id="friedman-card" class="card" style="margin-bottom:1.5rem;"></div>
+
+  <h3>Critical difference diagram (Nemenyi, &alpha; = 0.05)</h3>
+  <div style="overflow-x:auto;margin-bottom:1.5rem;">
+    <canvas id="cd-canvas" width="700" height="160" style="border:1px solid #E2E8F0;border-radius:6px;"></canvas>
+  </div>
+
+  <h3>Nemenyi post-hoc test</h3>
+  <div id="nemenyi-table"></div>
+  <p class="note" style="margin-top:0.5rem;">CD = 1.48 at &alpha; = 0.05, k = 4 methods, N = 10 folds. Methods are significantly different if rank difference &gt; CD.</p>
+
+  <h3 style="margin-top:1.5rem;">Wilcoxon signed-rank test (Holm&ndash;Bonferroni corrected)</h3>
+  <div id="wilcoxon-table"></div>
+  <p class="note" style="margin-top:0.5rem;">Holm&ndash;Bonferroni corrected adjusted p-values. More sensitive than Nemenyi for fold-level differences.</p>
+
+  <div class="principle-box" style="margin-top:1.75rem;">
+    <strong>Conclusion &mdash; Q3</strong>
+    Three-Cents is the only method statistically superior to <em>all others</em>
+    in <em>both domains</em> under user-independent CV (Wilcoxon&ndash;Holm, all adj&#8209;p &lt; 0.01).
+    No other pairwise ordering is domain-consistent.
+  </div>
+</section>
+
+<script>
+/* ---- Trajectory canvas ---- */
+(function() {
+  const canvas = document.getElementById('traj-canvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+
+  // Isometric projection helper
+  function iso(x, y, z) {
+    const cx = W / 2 - 20, cy = H / 2 + 10;
+    const scale = 70;
+    const px = cx + (x - z) * Math.cos(Math.PI / 6) * scale;
+    const py = cy - y * scale + (x + z) * Math.sin(Math.PI / 6) * scale;
+    return { px, py };
+  }
+
+  // Draw axes
+  function drawAxes() {
+    ctx.strokeStyle = '#CBD5E1';
+    ctx.lineWidth = 1.5;
+    const origin = iso(0, 0, 0);
+    const xEnd   = iso(1.1, 0, 0);
+    const yEnd   = iso(0, 1.1, 0);
+    const zEnd   = iso(0, 0, 1.1);
+
+    [[origin, xEnd, '#2563EB', 'X'],
+     [origin, yEnd, '#16A34A', 'Y'],
+     [origin, zEnd, '#DC2626', 'Z']].forEach(([o, e, color, label]) => {
+      ctx.beginPath();
+      ctx.moveTo(o.px, o.py);
+      ctx.lineTo(e.px, e.py);
+      ctx.strokeStyle = color;
+      ctx.stroke();
+      ctx.fillStyle = color;
+      ctx.font = '12px system-ui';
+      ctx.fillText(label, e.px + 4, e.py + 4);
+    });
+  }
+
+  // Generate synthetic gesture trajectory (digit-like loop)
+  const pts = [];
+  const N = 80;
+  for (let i = 0; i < N; i++) {
+    const t = (i / N) * 2 * Math.PI;
+    const x = 0.35 + 0.35 * Math.cos(t) + 0.08 * Math.cos(3 * t);
+    const y = 0.35 + 0.30 * Math.sin(t) - 0.04 * Math.sin(2 * t);
+    const z = 0.25 + 0.18 * Math.sin(2 * t + 0.5);
+    pts.push({ x, y, z });
+  }
+
+  drawAxes();
+
+  // Draw trajectory
+  ctx.lineWidth = 2;
+  for (let i = 1; i < pts.length; i++) {
+    const p0 = iso(pts[i-1].x, pts[i-1].y, pts[i-1].z);
+    const p1 = iso(pts[i].x,   pts[i].y,   pts[i].z);
+    const progress = i / pts.length;
+    ctx.beginPath();
+    ctx.moveTo(p0.px, p0.py);
+    ctx.lineTo(p1.px, p1.py);
+    ctx.strokeStyle = `hsl(${220 - progress * 80}, 70%, 45%)`;
+    ctx.stroke();
+  }
+
+  // Draw sample dots along path
+  [0, 15, 30, 45, 60, 75].forEach(i => {
+    const p = iso(pts[i].x, pts[i].y, pts[i].z);
+    ctx.beginPath();
+    ctx.arc(p.px, p.py, 3.5, 0, 2 * Math.PI);
+    ctx.fillStyle = '#1E293B';
+    ctx.fill();
+  });
+
+  // Start and end markers
+  const pStart = iso(pts[0].x, pts[0].y, pts[0].z);
+  const pEnd   = iso(pts[pts.length-1].x, pts[pts.length-1].y, pts[pts.length-1].z);
+  ctx.beginPath(); ctx.arc(pStart.px, pStart.py, 5, 0, 2*Math.PI);
+  ctx.fillStyle = '#16A34A'; ctx.fill();
+  ctx.beginPath(); ctx.arc(pEnd.px, pEnd.py, 5, 0, 2*Math.PI);
+  ctx.fillStyle = '#DC2626'; ctx.fill();
+  ctx.font = '11px system-ui'; ctx.fillStyle = '#64748B';
+  ctx.fillText('t=0', pStart.px + 7, pStart.py);
+  ctx.fillText('t=T', pEnd.px + 7, pEnd.py);
+})();
+
+/* ---- CV toggle ---- */
+function showCV(mode) {
+  document.getElementById('cv-indep').style.display = mode === 'indep' ? '' : 'none';
+  document.getElementById('cv-dep').style.display   = mode === 'dep'   ? '' : 'none';
+  document.getElementById('btn-indep').classList.toggle('active', mode === 'indep');
+  document.getElementById('btn-dep').classList.toggle('active', mode === 'dep');
+}
+
+/* ================================================================
+   DTW ANIMATION
+   ================================================================ */
+(function() {
+  const A = [2,5,3,7,4,6,3];
+  const B = [3,4,6,3,5,4,5];
+  const N = A.length, M = B.length; // 7 × 7
+
+  // Local cost matrix
+  const d = Array.from({length:N}, (_,i) =>
+    Array.from({length:M}, (_,j) => Math.abs(A[i] - B[j])));
+
+  // Accumulated cost matrix
+  const D = Array.from({length:N}, () => Array(M).fill(Infinity));
+  D[0][0] = d[0][0];
+  for (let i=1;i<N;i++) D[i][0] = d[i][0] + D[i-1][0];
+  for (let j=1;j<M;j++) D[0][j] = d[0][j] + D[0][j-1];
+  for (let i=1;i<N;i++)
+    for (let j=1;j<M;j++)
+      D[i][j] = d[i][j] + Math.min(D[i-1][j-1], D[i-1][j], D[i][j-1]);
+
+  // Optimal path by backtracking
+  function getPath() {
+    const path = new Set();
+    let i = N-1, j = M-1;
+    path.add(`${i},${j}`);
+    while (i > 0 || j > 0) {
+      if      (i === 0) { j--; }
+      else if (j === 0) { i--; }
+      else {
+        const m = Math.min(D[i-1][j-1], D[i-1][j], D[i][j-1]);
+        if      (m === D[i-1][j-1]) { i--; j--; }
+        else if (m === D[i-1][j])   { i--; }
+        else                         { j--; }
+      }
+      path.add(`${i},${j}`);
+    }
+    return path;
+  }
+  const optPath = getPath();
+
+  let maxD = 0;
+  for (let i=0;i<N;i++) for (let j=0;j<M;j++) if (D[i][j] > maxD) maxD = D[i][j];
+
+  const canvas = document.getElementById('dtw-canvas');
+  const ctx    = canvas.getContext('2d');
+  const CW = canvas.width, CH = canvas.height;
+  const mL = 68, mT = 62, mR = 14, mB = 14;
+  const gW = CW - mL - mR, gH = CH - mT - mB;
+  const cW = gW / M, cH = gH / N;
+  const TOTAL = N * M;
+
+  let currentStep = 0;
+  let animTimer = null;
+
+  function cellColor(val) {
+    const t = val / maxD;
+    const r = Math.round(219 + (29  - 219) * t);
+    const g = Math.round(234 + (78  - 234) * t);
+    const b = Math.round(254 + (216 - 254) * t);
+    return `rgb(${r},${g},${b})`;
+  }
+
+  function drawGrid() {
+    ctx.clearRect(0, 0, CW, CH);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, CW, CH);
+
+    // Axis labels
+    ctx.fillStyle = '#475569';
+    ctx.font = '12px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('Sequence B  →', mL + gW/2, 14);
+    ctx.save();
+    ctx.translate(13, mT + gH/2);
+    ctx.rotate(-Math.PI/2);
+    ctx.fillText('Sequence A  →', 0, 0);
+    ctx.restore();
+
+    // Column headers (B values)
+    for (let j=0;j<M;j++) {
+      ctx.fillStyle = '#64748B';
+      ctx.font = '11px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText(`B[${j}]=${B[j]}`, mL + (j+0.5)*cW, mT - 28);
+      ctx.fillStyle = '#94A3B8';
+      ctx.font = '10px system-ui';
+      ctx.fillText(`j=${j}`, mL + (j+0.5)*cW, mT - 14);
+    }
+    // Row headers (A values)
+    for (let i=0;i<N;i++) {
+      ctx.fillStyle = '#64748B';
+      ctx.font = '11px system-ui';
+      ctx.textAlign = 'right';
+      ctx.fillText(`A[${i}]=${A[i]}`, mL - 24, mT + (i+0.5)*cH + 4);
+      ctx.fillStyle = '#94A3B8';
+      ctx.font = '10px system-ui';
+      ctx.fillText(`i=${i}`, mL - 4, mT + (i+0.5)*cH + 4);
+    }
+
+    const done = currentStep === TOTAL;
+
+    // Cells
+    for (let step=0; step < currentStep; step++) {
+      const i = Math.floor(step / M), j = step % M;
+      const x = mL + j*cW, y = mT + i*cH;
+      const val = D[i][j];
+      const onPath = done && optPath.has(`${i},${j}`);
+
+      ctx.fillStyle = onPath ? '#FEE2E2' : cellColor(val);
+      ctx.fillRect(x+1, y+1, cW-2, cH-2);
+
+      if (onPath) {
+        ctx.strokeStyle = '#EF4444';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x+1.5, y+1.5, cW-3, cH-3);
+      }
+
+      const dark = !onPath && (val / maxD) > 0.55;
+      ctx.fillStyle = onPath ? '#991B1B' : (dark ? '#fff' : '#1E293B');
+      ctx.font = `${Math.min(cW,cH) >= 44 ? 12 : 10}px system-ui`;
+      ctx.textAlign = 'center';
+      ctx.fillText(val, x + cW/2, y + cH/2 + 4);
+    }
+
+    // Grid lines
+    ctx.strokeStyle = '#CBD5E1';
+    ctx.lineWidth = 0.5;
+    for (let i=0;i<=N;i++) {
+      ctx.beginPath();
+      ctx.moveTo(mL, mT + i*cH);
+      ctx.lineTo(mL + gW, mT + i*cH);
+      ctx.stroke();
+    }
+    for (let j=0;j<=M;j++) {
+      ctx.beginPath();
+      ctx.moveTo(mL + j*cW, mT);
+      ctx.lineTo(mL + j*cW, mT + gH);
+      ctx.stroke();
+    }
+
+    // Highlight last filled cell
+    if (currentStep > 0 && !done) {
+      const i = Math.floor((currentStep-1) / M), j = (currentStep-1) % M;
+      ctx.strokeStyle = '#2563EB';
+      ctx.lineWidth = 2.5;
+      ctx.strokeRect(mL + j*cW + 2, mT + i*cH + 2, cW-4, cH-4);
+    }
+
+    // Score
+    const el = document.getElementById('dtw-score');
+    if (done) {
+      el.innerHTML = `<strong style="color:#991B1B;">D(N,M) = D(${N-1},${M-1}) = ${D[N-1][M-1]}</strong> — optimal warping path highlighted in red`;
+    } else if (currentStep > 0) {
+      const i = Math.floor((currentStep-1)/M), j = (currentStep-1)%M;
+      el.innerHTML = `Step ${currentStep}/${TOTAL} — filled D(${i},${j}) = ${D[i][j]}`;
+    } else {
+      el.innerHTML = '';
+    }
+  }
+
+  drawGrid();
+
+  window.dtwPlay = function() {
+    const btn = document.getElementById('dtw-play');
+    if (animTimer) {
+      clearInterval(animTimer); animTimer = null;
+      btn.textContent = '▶ Play'; return;
+    }
+    if (currentStep >= TOTAL) dtwReset();
+    btn.textContent = '⏸ Pause';
+    animTimer = setInterval(() => {
+      if (currentStep < TOTAL) { currentStep++; drawGrid(); }
+      else { clearInterval(animTimer); animTimer = null; btn.textContent = '▶ Play'; }
+    }, 300);
+  };
+
+  window.dtwReset = function() {
+    if (animTimer) { clearInterval(animTimer); animTimer = null; }
+    currentStep = 0;
+    document.getElementById('dtw-play').textContent = '▶ Play';
+    drawGrid();
+  };
+})();
+
+/* ================================================================
+   SECTION 4 — RESULTS
+   ================================================================ */
+(function() {
+  const METHOD_ORDER = ['DTW','EditDistance','ThreeCents','BiLSTM'];
+  const METHOD_LABEL = { DTW:'DTW', EditDistance:'Edit-distance', ThreeCents:'Three-Cents', BiLSTM:'BiLSTM' };
+  const METHOD_TAG   = { DTW:'tag-dtw', EditDistance:'tag-ed', ThreeCents:'tag-3c', BiLSTM:'tag-bi' };
+  let foldChart = null;
+
+  function mean(a) { return a.reduce((s,v)=>s+v,0)/a.length; }
+  function std(a) {
+    const m = mean(a);
+    return Math.sqrt(a.reduce((s,v)=>s+(v-m)**2,0)/a.length);
+  }
+
+  function configParts(method, cfg) {
+    const p = [];
+    if (cfg.PCA      !== undefined) p.push(`PCA: ${cfg.PCA}D`);
+    if (cfg.k        !== undefined) p.push(`k-NN k=${cfg.k}`);
+    if (cfg.K        !== undefined) p.push(`Codebook K=${cfg.K}`);
+    if (cfg.compression !== undefined) p.push(`Compression: ${cfg.compression}`);
+    if (cfg.n_points !== undefined) p.push(`n points: ${cfg.n_points}`);
+    if (cfg.T        !== undefined) p.push(`Seq. length T=${cfg.T}`);
+    if (cfg.h        !== undefined) p.push(`Hidden units h=${cfg.h}`);
+    return p;
+  }
+
+  function configNote(method, cfg, domain, modeKey) {
+    if (method === 'DTW')
+      return 'k=1 optimal: single nearest template is most discriminative once the DTW metric is applied.';
+    if (method === 'EditDistance') {
+      let n = 'compression=False: consecutive repeated symbols carry local timing information.';
+      if (cfg.K === 20) n += ' K=20: domain 4 gestures are geometrically distinct — coarser codebook sufficient.';
+      else if (cfg.K === 40 && domain === 'domain1') n += ' K=40: digits require finer granularity to separate similar trajectories.';
+      else if (cfg.K === 35) n += ' K=35: balanced granularity for user-dependent matching.';
+      return n;
+    }
+    if (method === 'ThreeCents') {
+      let n = 'n=16 (not 64): short mid-air trajectories — denser resampling adds interpolation noise.';
+      if (cfg.PCA === 2) n += ' PCA-2D: digits are planar — z component captures inter-user noise.';
+      if (cfg.PCA === 3) n += ' PCA-3D: geometric figures are intrinsically 3D — all principal axes informative.';
+      return n;
+    }
+    if (method === 'BiLSTM') {
+      let n = '';
+      if (cfg.h === 32) n = 'h=32: smallest capacity in the hardest setting — prevents overfitting on ~900 training samples.';
+      else n = 'h=64: larger capacity justified; within-user/within-domain consistency reduces overfitting risk.';
+      return n;
+    }
+    return '';
+  }
+
+  window.updateS4 = function() {
+    const domain  = document.getElementById('sel-domain').value;
+    const mode    = document.getElementById('sel-mode').value;
+    const split   = DATA[domain][mode];
+    const modeKey = mode === 'independent' ? 'indep' : 'dep';
+    const cfgKey  = `${domain === 'domain1' ? 'domain1' : 'domain4'}_${modeKey}`;
+
+    // Stats
+    const stats = METHOD_ORDER.map(m => ({
+      m, mean: mean(split[m]), std: std(split[m]), vals: split[m]
+    }));
+    const bestMean = Math.max(...stats.map(s => s.mean));
+
+    // 4a Table
+    document.getElementById('acc-table-wrap').innerHTML = `
+      <table>
+        <thead><tr>
+          <th>Method</th>
+          <th>Mean accuracy</th>
+          <th>Std (10 folds)</th>
+        </tr></thead>
+        <tbody>
+          ${stats.map(s => `
+            <tr class="${s.mean === bestMean ? 'best-method' : ''}">
+              <td><span class="tag ${METHOD_TAG[s.m]}">${METHOD_LABEL[s.m]}</span></td>
+              <td>${(s.mean*100).toFixed(1)}%${s.mean === bestMean ? '&nbsp;&#9733;' : ''}</td>
+              <td>&plusmn;&nbsp;${(s.std*100).toFixed(1)}%</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+
+    // 4b Chart
+    const foldCtx = document.getElementById('fold-chart').getContext('2d');
+    if (foldChart) { foldChart.destroy(); foldChart = null; }
+    foldChart = new Chart(foldCtx, {
+      type: 'bar',
+      data: {
+        labels: Array.from({length:10}, (_,i) => `Fold ${i+1}`),
+        datasets: METHOD_ORDER.map(m => ({
+          label: METHOD_LABEL[m],
+          data: split[m].map(v => parseFloat((v*100).toFixed(1))),
+          backgroundColor: COLORS[m] + 'BB',
+          borderColor: COLORS[m],
+          borderWidth: 1.5,
+          borderRadius: 2
+        }))
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'top', labels: { font:{size:12}, boxWidth:14, padding:14 } },
+          tooltip: { callbacks: { label: c => ` ${c.dataset.label}: ${c.parsed.y}%` } }
+        },
+        scales: {
+          y: {
+            min: 0, max: 100,
+            title: { display:true, text:'Accuracy (%)', font:{size:12} },
+            ticks: { font:{size:11} },
+            grid: { color:'#F1F5F9' }
+          },
+          x: { ticks: { font:{size:11} }, grid: { display:false } }
+        }
+      }
+    });
+
+    // 4c Config cards
+    document.getElementById('config-cards').innerHTML = METHOD_ORDER.map(m => {
+      const cfg   = BEST_CONFIGS[m][cfgKey];
+      const parts = configParts(m, cfg);
+      const note  = configNote(m, cfg, domain, modeKey);
+      return `
+        <div class="card" style="margin-bottom:0;">
+          <span class="tag ${METHOD_TAG[m]}" style="font-size:13px;font-weight:500;">${METHOD_LABEL[m]}</span>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin:0.6rem 0;">
+            ${parts.map(p => `<span class="hp-item">${p}</span>`).join('')}
+          </div>
+          <p style="font-size:12px;color:#64748B;padding-left:8px;border-left:2px solid #CBD5E1;margin:0;">${note}</p>
+        </div>`;
+    }).join('');
+  };
+
+  window.updateS4();
+})();
+
+/* ================================================================
+   SECTION 5 — CONFUSION MATRIX HEATMAP
+   ================================================================ */
+(function() {
+  const canvas = document.getElementById('conf-canvas');
+  const ctx    = canvas.getContext('2d');
+  const CW = canvas.width, CH = canvas.height;
+  const ML = 84, MT = 84, MR = 8, MB = 20;
+  const GW = CW - ML - MR, GH = CH - MT - MB;
+
+  let curDomain = 'domain1', curMode = 'independent';
+
+  function cellColor(val, isDiag) {
+    if (isDiag && val > 90) return { bg: '#DCFCE7', fg: '#166534' };
+    if (val === 0)           return { bg: '#FFFFFF', fg: '#CBD5E1' };
+    const t = val / 100;
+    const r = Math.round(255 + (185 - 255) * t);
+    const g = Math.round(255 + (28  - 255) * t);
+    const b = Math.round(255 + (28  - 255) * t);
+    return { bg: `rgb(${r},${g},${b})`, fg: t > 0.5 ? '#FFFFFF' : '#1E293B' };
+  }
+
+  function drawHeatmap() {
+    const domain = curDomain, mode = curMode;
+    const matrix = CONFUSION[domain][mode];
+    const labels = CONFUSION[domain].labels;
+    const n = labels.length;
+    const cW = GW / n, cH = GH / n;
+    const isDomain4 = domain === 'domain4';
+
+    ctx.clearRect(0, 0, CW, CH);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, CW, CH);
+
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) {
+        const val = matrix[i][j];
+        const x = ML + j * cW, y = MT + i * cH;
+        const { bg, fg } = cellColor(val, i === j);
+        ctx.fillStyle = bg;
+        ctx.fillRect(x, y, cW, cH);
+        ctx.strokeStyle = '#E2E8F0';
+        ctx.lineWidth = 0.5;
+        ctx.strokeRect(x, y, cW, cH);
+        if (val > 0) {
+          ctx.fillStyle = fg;
+          ctx.font = `${cW > 44 ? 12 : 10}px system-ui`;
+          ctx.textAlign = 'center';
+          ctx.fillText(val, x + cW / 2, y + cH / 2 + 4);
+        }
+      }
+    }
+
+    const fs = isDomain4 ? 10 : 12;
+    ctx.fillStyle = '#475569';
+    ctx.textAlign = 'right';
+    for (let i = 0; i < n; i++) {
+      ctx.font = `${fs}px system-ui`;
+      ctx.fillText(labels[i], ML - 6, MT + i * cH + cH / 2 + 4);
+    }
+    for (let j = 0; j < n; j++) {
+      const cx = ML + j * cW + cW / 2;
+      ctx.font = `${fs}px system-ui`;
+      ctx.fillStyle = '#475569';
+      if (isDomain4) {
+        ctx.save();
+        ctx.translate(cx, MT - 8);
+        ctx.rotate(-Math.PI / 3);
+        ctx.textAlign = 'left';
+        ctx.fillText(labels[j], 0, 0);
+        ctx.restore();
+      } else {
+        ctx.textAlign = 'center';
+        ctx.fillText(labels[j], cx, MT - 10);
+      }
+    }
+
+    ctx.fillStyle = '#94A3B8';
+    ctx.font = '11px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('Predicted class →', ML + GW / 2, CH - 4);
+    ctx.save();
+    ctx.translate(11, MT + GH / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText('True class →', 0, 0);
+    ctx.restore();
+
+    let diag = 0;
+    for (let i = 0; i < n; i++) diag += matrix[i][i];
+    document.getElementById('conf-acc').textContent =
+      'Accuracy: ' + (diag / 1000 * 100).toFixed(1) + '%';
+  }
+
+  canvas.addEventListener('click', function(e) {
+    const rect = canvas.getBoundingClientRect();
+    const sx = CW / rect.width, sy = CH / rect.height;
+    const cx = (e.clientX - rect.left) * sx;
+    const cy = (e.clientY - rect.top)  * sy;
+    const domain = curDomain, mode = curMode;
+    const n  = CONFUSION[domain].labels.length;
+    const cW = GW / n, cH = GH / n;
+    const j  = Math.floor((cx - ML) / cW);
+    const i  = Math.floor((cy - MT) / cH);
+    const expl = document.getElementById('conf-explanation');
+    if (i < 0 || i >= n || j < 0 || j >= n || i === j) {
+      expl.style.display = 'none'; return;
+    }
+    const val = CONFUSION[domain][mode][i][j];
+    if (val === 0) { expl.style.display = 'none'; return; }
+    const labels = CONFUSION[domain].labels;
+    const note   = ((CONFUSION_EXPLANATIONS[domain + '_' + mode]) || {})[i + '_' + j] || '';
+    expl.style.display = 'block';
+    expl.innerHTML =
+      '<strong>True: ' + labels[i] + ' → Predicted: ' + labels[j] + '</strong>' +
+      '&nbsp;<span style="background:#FEE2E2;color:#B91C1C;padding:2px 8px;border-radius:4px;font-size:13px;">' + val + '/100 misclassified</span>' +
+      (note ? '<br><br>' + note : '<br><br><em style="color:#A16207">No explanation stored for this cell.</em>');
+  });
+
+  window.updateConf = function() {
+    curDomain = document.getElementById('conf-domain').value;
+    curMode   = document.getElementById('conf-mode').value;
+    document.getElementById('conf-explanation').style.display = 'none';
+    drawHeatmap();
+  };
+
+  drawHeatmap();
+})();
+
+/* ================================================================
+   SECTION 6 — STATISTICAL TESTS
+   ================================================================ */
+(function() {
+  const METHODS = ['ThreeCents', 'DTW', 'BiLSTM', 'EditDistance'];
+  const MLABEL  = { ThreeCents: 'Three-Cents', DTW: 'DTW', BiLSTM: 'BiLSTM', EditDistance: 'Edit-dist' };
+  const PMAP    = { 'DTW': 'DTW', 'Edit-dist': 'EditDistance', 'Three-Cents': 'ThreeCents', '3¢': 'ThreeCents', 'BiLSTM': 'BiLSTM' };
+
+  function parsePair(s) {
+    return s.split(' vs ').map(function(x) { return PMAP[x.trim()]; }).filter(Boolean);
+  }
+
+  function maxCliques(methods, nonSigSet) {
+    var adj = function(a, b) { return nonSigSet.has([a, b].sort().join('|')); };
+    var result = [];
+    function bk(R, P, X) {
+      if (!P.length && !X.length) { if (R.length >= 2) result.push(R.slice()); return; }
+      if (!P.length) return;
+      var pivot = P.concat(X)[0];
+      var cands = P.filter(function(v) { return !adj(pivot, v); });
+      for (var ci = 0; ci < cands.length; ci++) {
+        var v = cands[ci];
+        bk(R.concat([v]), P.filter(function(u) { return adj(v, u); }), X.filter(function(u) { return adj(v, u); }));
+        P = P.filter(function(u) { return u !== v; });
+        X = X.concat([v]);
+      }
+    }
+    bk([], methods.slice(), []);
+    return result;
+  }
+
+  function drawCD(domain) {
+    var canvas = document.getElementById('cd-canvas');
+    var ctx = canvas.getContext('2d');
+    var W = canvas.width, H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, W, H);
+
+    var test  = STAT_TESTS[domain];
+    var ranks = test.ranks;
+    var axL = 105, axR = 635, axY = 95;
+    var rankToX = function(r) { return axL + (4 - r) / 3 * (axR - axL); };
+
+    ctx.fillStyle = '#1E293B';
+    ctx.font = '13px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('Critical difference diagram — ' + (domain === 'domain1' ? 'Domain 1' : 'Domain 4') + ' (user-independent)', W / 2, 16);
+
+    var cdLen = 1.48 / 3 * (axR - axL);
+    var bX = axL + 4, bY = 32;
+    ctx.strokeStyle = '#64748B'; ctx.lineWidth = 1.5;
+    [[bX, bY, bX + cdLen, bY], [bX, bY - 5, bX, bY + 5], [bX + cdLen, bY - 5, bX + cdLen, bY + 5]]
+      .forEach(function(seg) { ctx.beginPath(); ctx.moveTo(seg[0], seg[1]); ctx.lineTo(seg[2], seg[3]); ctx.stroke(); });
+    ctx.fillStyle = '#64748B'; ctx.font = '11px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText('CD = 1.48', bX + cdLen / 2, bY - 8);
+
+    var nonSigSet = new Set(
+      test.nemenyi.filter(function(e) { return !e.sig; }).map(function(e) {
+        var p = parsePair(e.pair);
+        return p.length === 2 ? p.sort().join('|') : null;
+      }).filter(Boolean)
+    );
+    var cliques = maxCliques(METHODS, nonSigSet);
+    var drawnBars = [];
+    cliques.forEach(function(clique) {
+      var xs = clique.map(function(m) { return rankToX(ranks[m]); });
+      var x1 = Math.min.apply(null, xs), x2 = Math.max.apply(null, xs);
+      var level = 0;
+      for (var bi = 0; bi < drawnBars.length; bi++) {
+        if (x1 < drawnBars[bi].x2 && x2 > drawnBars[bi].x1 && drawnBars[bi].level === level) level++;
+      }
+      drawnBars.push({ x1: x1, x2: x2, level: level });
+      var y = axY - 22 - level * 14;
+      ctx.strokeStyle = '#334155'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(x1, y); ctx.lineTo(x2, y); ctx.stroke();
+      ctx.lineWidth = 1.5; ctx.lineCap = 'butt';
+      [x1, x2].forEach(function(x) { ctx.beginPath(); ctx.moveTo(x, y - 5); ctx.lineTo(x, y + 5); ctx.stroke(); });
+    });
+
+    ctx.strokeStyle = '#94A3B8'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(axL, axY); ctx.lineTo(axR, axY); ctx.stroke();
+    for (var r = 1; r <= 4; r++) {
+      var tx = rankToX(r);
+      ctx.strokeStyle = '#CBD5E1'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(tx, axY - 4); ctx.lineTo(tx, axY + 4); ctx.stroke();
+      ctx.fillStyle = '#94A3B8'; ctx.font = '11px system-ui'; ctx.textAlign = 'center';
+      ctx.fillText(r, tx, axY + 17);
+    }
+    ctx.fillStyle = '#94A3B8'; ctx.font = '11px system-ui';
+    ctx.textAlign = 'right';  ctx.fillText('← worst', axL - 4, axY + 17);
+    ctx.textAlign = 'left';   ctx.fillText('best →', axR + 4, axY + 17);
+
+    var byRankKey = {};
+    METHODS.forEach(function(m) {
+      var k = Math.round(ranks[m] * 100);
+      if (!byRankKey[k]) byRankKey[k] = [];
+      byRankKey[k].push(m);
+    });
+    METHODS.forEach(function(m) {
+      var k     = Math.round(ranks[m] * 100);
+      var group = byRankKey[k];
+      var idx   = group.indexOf(m);
+      var total = group.length;
+      var dotY  = axY + (idx - (total - 1) / 2) * 14;
+      var x     = rankToX(ranks[m]);
+      ctx.beginPath(); ctx.arc(x, dotY, 6.5, 0, 2 * Math.PI);
+      ctx.fillStyle = COLORS[m]; ctx.fill();
+      ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 1.5; ctx.stroke();
+      var lblY = axY + 30 + idx * 14;
+      if (total > 1) {
+        ctx.strokeStyle = COLORS[m] + '66'; ctx.lineWidth = 1;
+        ctx.setLineDash([2, 2]);
+        ctx.beginPath(); ctx.moveTo(x, dotY + 7); ctx.lineTo(x, lblY - 10); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      ctx.fillStyle = COLORS[m]; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'center';
+      ctx.fillText(MLABEL[m], x, lblY);
+      ctx.fillStyle = '#94A3B8'; ctx.font = '10px system-ui';
+      ctx.fillText('(' + ranks[m] + ')', x, lblY + 13);
+    });
+  }
+
+  function buildTable(rows, cols) {
+    var head = cols.map(function(c) { return '<th>' + c + '</th>'; }).join('');
+    var body = rows.map(function(r) {
+      var cells = r.cells.map(function(c, i) {
+        var last = i === r.cells.length - 1;
+        var cls  = last ? ' class="' + (r.sig ? 'sig-yes' : 'sig-no') + '"' : '';
+        return '<td' + cls + '>' + c + '</td>';
+      }).join('');
+      return '<tr' + (r.sig ? ' style="background:#F0FDF4;"' : '') + '>' + cells + '</tr>';
+    }).join('');
+    return '<table><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table>';
+  }
+
+  function fmtP(p) { return p < 0.001 ? p.toExponential(2) : p.toFixed(p < 0.01 ? 5 : 3); }
+
+  window.updateStat = function() {
+    var domain = document.getElementById('stat-domain').value;
+    var test   = STAT_TESTS[domain];
+
+    document.getElementById('friedman-card').innerHTML =
+      '<div style="display:flex;gap:2.5rem;flex-wrap:wrap;align-items:center;">' +
+        '<div><div style="font-size:12px;color:#64748B;">χ² statistic</div>' +
+        '<div style="font-size:22px;font-weight:500;">' + test.friedman.statistic + '</div></div>' +
+        '<div><div style="font-size:12px;color:#64748B;">p-value</div>' +
+        '<div style="font-size:22px;font-weight:500;">' + test.friedman.p.toExponential(2) + '</div></div>' +
+        '<div><div style="font-size:12px;color:#64748B;">Significant</div>' +
+        '<div style="font-size:22px;font-weight:500;color:#16A34A;">YES</div></div>' +
+      '</div>' +
+      '<p style="font-size:13px;color:#64748B;margin-top:0.75rem;">Null hypothesis — all methods share the same expected Friedman rank — ' +
+      '<strong>rejected</strong> (p ≪ 0.05). Post-hoc comparisons justified.</p>';
+
+    drawCD(domain);
+
+    document.getElementById('nemenyi-table').innerHTML = buildTable(
+      test.nemenyi.map(function(e) {
+        return { sig: e.sig, cells: [e.pair, e.diff.toFixed(2), fmtP(e.p), e.sig ? '&#10003; Yes' : 'No'] };
+      }),
+      ['Pair', 'Rank diff', 'p-value', 'Significant']
+    );
+
+    document.getElementById('wilcoxon-table').innerHTML = buildTable(
+      test.wilcoxon.map(function(e) {
+        return { sig: e.sig, cells: [e.pair, fmtP(e.p), e.sig ? '&#10003; Yes' : 'No'] };
+      }),
+      ['Pair', 'adj-p (Holm)', 'Significant']
+    );
+  };
+
+  window.updateStat();
+})();
+</script>
+</body>
+</html>

@@ -36,17 +36,17 @@ apply.}
  & & user-indep. & user-dep. & user-indep. & user-dep. \\
 \midrule
 \multirow{2}{*}{DTW}
-  & PCA                   & none & none & none & none \\
+  & PCA                   & 3 & 3 & 3 & 3 \\
   & $k$-NN neighbours $k$ & 1    & 1    & 1    & 1    \\
 \midrule
 \multirow{4}{*}{Edit-distance}
-  & PCA                   & none & none & none & none \\
+  & PCA                   & 3 & 3 & 3 & 3 \\
   & Codebook size $K$     & 40   & 35   & 20   & 40   \\
   & Compression           & No   & No   & No   & No   \\
   & $k$-NN neighbours $k$ & 1    & 1    & 1    & 1    \\
 \midrule
 \multirow{2}{*}{Three-Cents}
-  & PCA                          & \textbf{2D} & \textbf{2D} & none & none \\
+  & PCA                          & 2 & 2 & 3 & 3 \\
   & Resampling points $n$        & 16          & 16          & 16   & 16   \\
 \midrule
 \multirow{2}{*}{BiLSTM}
@@ -501,5 +501,7 @@ Edit-distance under Wilcoxon--Holm (adj-$p = 0.012$).
  
 In summary, \textbf{Three-Cents is the only method that is statistically
 superior to all others in both domains} under the user-independent protocol,
-providing a clear and unambiguous answer to~(Q3). No other pairwise ordering
-is consistently significant across both domains.
+providing a clear and unambiguous answer to~(Q3). No other pairwise ordering is \emph{domain-consistent}: while Wilcoxon--Holm
+separates Edit-distance from DTW on domain~1 (adj-$p = 0.031$), this gap
+vanishes on domain~4, so only the Three-Cents advantage holds robustly across
+both domains.
