@@ -263,11 +263,16 @@ def run_ablation(gestures: list, cv_mode: str, val_fraction: float = 0.20):
     # ── Phase 1: HP selection on inner validation ─────────────────────────────
     hp_scores = defaultdict(list)
 
+    _total_p1 = (len(N_RESAMPLE_OPTIONS) * len(CODEBOOK_OPTIONS) * len(CLUSTERING_OPTIONS))
+    _fold_i = 0
     for train, test, _ in cv_fn(gestures):
+        _fold_i += 1
+        print(f"  [Phase 1] Fold {_fold_i} — {_total_p1} codebook builds to evaluate")
         mean, std = fit_normalizer(train)
         train_n   = apply_normalizer(train, mean, std)
         inner_train, inner_val = inner_val_split(train_n, val_fraction)
 
+        _combo_i = 0
         for n_resample in N_RESAMPLE_OPTIONS:
             it_r = _apply_resample(inner_train, n_resample)
             iv_r = _apply_resample(inner_val,   n_resample)
@@ -275,6 +280,10 @@ def run_ablation(gestures: list, cv_mode: str, val_fraction: float = 0.20):
 
             for n_clusters in CODEBOOK_OPTIONS:
                 for clustering in CLUSTERING_OPTIONS:
+                    _combo_i += 1
+                    print(f"    [{_combo_i}/{_total_p1}] n_r={n_resample} "
+                          f"codebook={n_clusters} clustering={clustering}",
+                          end="\r", flush=True)
                     codebook = _get_codebook(all_train_pts, n_clusters, clustering)
 
                     for compress in COMPRESSION_OPTIONS:
@@ -292,6 +301,7 @@ def run_ablation(gestures: list, cv_mode: str, val_fraction: float = 0.20):
                                 hp = (n_resample, n_clusters, clustering,
                                       compress, sub_cost, k)
                                 hp_scores[hp].append(acc)
+        print()  # newline after \r progress line
 
     best_hp  = max(hp_scores, key=lambda h: np.mean(hp_scores[h]))
     best_val = float(np.mean(hp_scores[best_hp]))
@@ -302,6 +312,8 @@ def run_ablation(gestures: list, cv_mode: str, val_fraction: float = 0.20):
     # ── Phase 2: final evaluation with fixed best HP ──────────────────────────
     rows = []
     for train, test, fold_id in cv_fn(gestures):
+        print(f"  [Phase 2] Fold {fold_id} — testing best HP "
+              f"(n_r={n_r} codebook={n_cl} clust={clust} compress={comp} sub={sub} k={k_b})")
         mean, std = fit_normalizer(train)
         train_n   = apply_normalizer(train, mean, std)
         test_n    = apply_normalizer(test,  mean, std)

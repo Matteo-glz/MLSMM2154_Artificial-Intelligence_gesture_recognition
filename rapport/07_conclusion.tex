@@ -8,8 +8,8 @@ The three research questions raised in the introduction can now be answered.
 
 \paragraph{Q1 --- Classical vs.\ modern methods.}
 Contrary to the common expectation that neural or more elaborate methods
-should dominate, the Three-Cents recognizer --- a lightweight
-resample--scale--translate template matcher --- achieves the highest
+should dominate, the Three-Cents recognizer (a lightweight
+resample--scale--translate template matcher) achieves the highest
 user-independent accuracy on both domains ($96.3\%$ on domain~1,
 $95.1\%$ on domain~4), outperforming the BiLSTM by a margin of $11$--$25$
 percentage points. This result highlights that the \emph{inductive bias} of
@@ -44,8 +44,8 @@ consistent across both domains.
 The BiLSTM's underperformance is most plausibly a data-size effect: with
 $\sim$1\,000 samples per domain, the network cannot learn the cross-user
 invariances that Three-Cents enforces by design. Training on a larger,
-more diverse cohort --- or augmenting the dataset with synthetic inter-user
-style transfers --- would likely narrow this gap considerably. The ablation
+more diverse cohort, or augmenting the dataset with synthetic inter-user
+style transfers, would likely narrow this gap considerably. The ablation
 study further revealed that PCA applied without prior normalization can
 degrade performance for Edit-distance, a methodological pitfall worth
 flagging for practitioners. Finally, the confusion analysis showed that
@@ -55,5 +55,4 @@ with class-specific augmentation or cost-sensitive training.
 
 More broadly, this project illustrates that well-designed, geometry-aware
 feature engineering can rival or surpass end-to-end learned representations
-when labeled data is scarce --- a conclusion that remains practically relevant
-beyond the specific gesture recognition setting studied here.
+when labeled data is scarce.

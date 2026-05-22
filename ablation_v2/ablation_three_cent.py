@@ -47,7 +47,7 @@ OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ablation_v2_
 # Hyperparameter grid
 # ─────────────────────────────────────────────────────────────────────────────
 
-N_RESAMPLE_OPTIONS   = [32, 64, 128]
+N_RESAMPLE_OPTIONS   = [32, 64]
 NORM_OPTIONS         = ["three_cent", "none", "bounding_box", "zscore"]
 N_TEMPLATES_OPTIONS  = [1, 3, 5, "all"]
 SELECTION_OPTIONS    = ["first", "centroid", "random"]
@@ -253,15 +253,25 @@ def run_ablation(gestures: list, cv_mode: str, val_fraction: float = 0.20):
     # ── Phase 1: HP selection on inner validation ─────────────────────────────
     hp_scores = defaultdict(list)
 
+    _total_p1 = (len(N_RESAMPLE_OPTIONS) * len(NORM_OPTIONS) *
+                 len(N_TEMPLATES_OPTIONS) * len(SELECTION_OPTIONS))
+    _fold_i = 0
     for train, test, _ in cv_fn(gestures):
+        _fold_i += 1
+        print(f"  [Phase 1] Fold {_fold_i} — {_total_p1} template configurations to evaluate")
         mean, std = fit_normalizer(train)
         train_n   = apply_normalizer(train, mean, std)
         inner_train, inner_val = inner_val_split(train_n, val_fraction)
 
+        _combo_i = 0
         for n_resample in N_RESAMPLE_OPTIONS:
             for norm in NORM_OPTIONS:
                 for n_tmpl in N_TEMPLATES_OPTIONS:
                     for selection in SELECTION_OPTIONS:
+                        _combo_i += 1
+                        print(f"    [{_combo_i}/{_total_p1}] n_r={n_resample} "
+                              f"norm={norm} n_tmpl={n_tmpl} sel={selection}",
+                              end="\r", flush=True)
                         templates = _build_templates(
                             inner_train, n_resample, norm, n_tmpl, selection)
 
@@ -275,6 +285,7 @@ def run_ablation(gestures: list, cv_mode: str, val_fraction: float = 0.20):
                             acc = float(np.mean(np.array(y_true) == np.array(y_pred)))
                             hp  = (n_resample, norm, n_tmpl, selection, dist_type)
                             hp_scores[hp].append(acc)
+        print()  # newline after \r progress line
 
     best_hp  = max(hp_scores, key=lambda h: np.mean(hp_scores[h]))
     best_val = float(np.mean(hp_scores[best_hp]))
@@ -285,6 +296,8 @@ def run_ablation(gestures: list, cv_mode: str, val_fraction: float = 0.20):
     # ── Phase 2: final evaluation with fixed best HP ──────────────────────────
     rows = []
     for train, test, fold_id in cv_fn(gestures):
+        print(f"  [Phase 2] Fold {fold_id} — testing best HP "
+              f"(n_r={n_r} norm={norm_b} n_tmpl={n_tmpl_b} sel={sel_b} dist={dist_b})")
         mean, std = fit_normalizer(train)
         train_n   = apply_normalizer(train, mean, std)
         test_n    = apply_normalizer(test,  mean, std)

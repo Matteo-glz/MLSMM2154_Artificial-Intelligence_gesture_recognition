@@ -186,11 +186,17 @@ def run_ablation(gestures: list, cv_mode: str, val_fraction: float = 0.20):
     # ── Phase 1: HP selection on inner validation ─────────────────────────────
     hp_scores = defaultdict(list)
 
+    _total_p1 = (len(N_RESAMPLE_OPTIONS) * len(FEATURE_OPTIONS) *
+                 len(WINDOW_FRAC_OPTIONS) * len(METRIC_OPTIONS) * len(DERIVATIVE_OPTIONS))
+    _fold_i = 0
     for train, test, _ in cv_fn(gestures):
+        _fold_i += 1
+        print(f"  [Phase 1] Fold {_fold_i} — {_total_p1} cache builds to evaluate")
         mean, std = fit_normalizer(train)
         train_n   = apply_normalizer(train, mean, std)
         inner_train, inner_val = inner_val_split(train_n, val_fraction)
 
+        _combo_i = 0
         for n_resample in N_RESAMPLE_OPTIONS:
             for feature_type in FEATURE_OPTIONS:
                 pca_models = None
@@ -203,6 +209,11 @@ def run_ablation(gestures: list, cv_mode: str, val_fraction: float = 0.20):
                 for window_frac in WINDOW_FRAC_OPTIONS:
                     for metric in METRIC_OPTIONS:
                         for derivative in DERIVATIVE_OPTIONS:
+                            _combo_i += 1
+                            print(f"    [{_combo_i}/{_total_p1}] n_r={n_resample} "
+                                  f"feat={feature_type} win={window_frac} "
+                                  f"metric={metric} deriv={derivative}",
+                                  end="\r", flush=True)
                             cache = _build_cache(it_feat, iv_feat,
                                                  window_frac, metric, derivative)
                             for k in K_OPTIONS:
@@ -212,6 +223,7 @@ def run_ablation(gestures: list, cv_mode: str, val_fraction: float = 0.20):
                                 hp = (n_resample, feature_type,
                                       window_frac, metric, derivative, k)
                                 hp_scores[hp].append(acc)
+        print()  # newline after \r progress line
 
     best_hp  = max(hp_scores, key=lambda h: np.mean(hp_scores[h]))
     best_val = float(np.mean(hp_scores[best_hp]))
@@ -222,6 +234,8 @@ def run_ablation(gestures: list, cv_mode: str, val_fraction: float = 0.20):
     # ── Phase 2: final evaluation with fixed best HP ──────────────────────────
     rows = []
     for train, test, fold_id in cv_fn(gestures):
+        print(f"  [Phase 2] Fold {fold_id} — testing best HP "
+              f"(n_r={n_r} feat={feat} win={win} metric={met} deriv={deriv} k={k_b})")
         mean, std = fit_normalizer(train)
         train_n   = apply_normalizer(train, mean, std)
         test_n    = apply_normalizer(test,  mean, std)

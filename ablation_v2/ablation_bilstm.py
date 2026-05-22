@@ -195,11 +195,18 @@ def run_ablation(gestures: list, cv_mode: str, val_fraction: float = 0.20):
     # ── Phase 1: HP selection on inner validation ─────────────────────────────
     hp_scores = defaultdict(list)
 
+    _total_p1 = (len(SEQ_LEN_OPTIONS) * len(FEATURE_OPTIONS) * len(N_UNITS_OPTIONS) *
+                 len(N_LAYERS_OPTIONS) * len(DROPOUT_OPTIONS) * len(OPTIMIZER_OPTIONS) *
+                 len(LR_OPTIONS) * len(BATCH_OPTIONS))
+    _fold_i = 0
     for train, test, _ in cv_fn(gestures):
+        _fold_i += 1
+        print(f"  [Phase 1] Fold {_fold_i} — {_total_p1} model trainings to evaluate")
         mean, std = fit_normalizer(train)
         train_n   = apply_normalizer(train, mean, std)
         inner_train, inner_val = inner_val_split(train_n, val_fraction)
 
+        _combo_i = 0
         for seq_len in SEQ_LEN_OPTIONS:
             for feature_type in FEATURE_OPTIONS:
                 X_it, _, Y_it    = _build_tensors(inner_train, seq_len, feature_type,
@@ -214,6 +221,13 @@ def run_ablation(gestures: list, cv_mode: str, val_fraction: float = 0.20):
                             for opt_name in OPTIMIZER_OPTIONS:
                                 for lr in LR_OPTIONS:
                                     for batch_size in BATCH_OPTIONS:
+                                        _combo_i += 1
+                                        print(f"    [{_combo_i}/{_total_p1}] "
+                                              f"seq={seq_len} feat={feature_type} "
+                                              f"units={n_units} layers={n_layers} "
+                                              f"drop={dropout} opt={opt_name} "
+                                              f"lr={lr} bs={batch_size}",
+                                              end="\r", flush=True)
                                         tf.keras.backend.clear_session()
                                         model = build_bilstm(
                                             (seq_len, n_dims), n_classes,
@@ -243,6 +257,7 @@ def run_ablation(gestures: list, cv_mode: str, val_fraction: float = 0.20):
                                               n_layers, dropout, opt_name, lr,
                                               batch_size)
                                         hp_scores[hp].append(val_acc)
+        print()  # newline after \r progress line
 
     best_hp  = max(hp_scores, key=lambda h: np.mean(hp_scores[h]))
     best_val = float(np.mean(hp_scores[best_hp]))
@@ -254,6 +269,8 @@ def run_ablation(gestures: list, cv_mode: str, val_fraction: float = 0.20):
     # ── Phase 2: final evaluation with fixed best HP ──────────────────────────
     rows = []
     for train, test, fold_id in cv_fn(gestures):
+        print(f"  [Phase 2] Fold {fold_id} — training best HP "
+              f"(seq={sl} feat={ft} units={nu} layers={nl} drop={dr} opt={op} lr={lr_b} bs={bs})")
         mean, std = fit_normalizer(train)
         train_n   = apply_normalizer(train, mean, std)
         test_n    = apply_normalizer(test,  mean, std)
