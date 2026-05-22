@@ -82,22 +82,51 @@ def compute_dtw_distance_window(seq1, seq2, window=None):
 
 
 
-@jit(nopython=True) # This decorator makes it lightning fast
+@jit(nopython=True)
 def compute_dtw_distance_c_speed(seq1, seq2):
+    """
+    Dynamic Time Warping distance, NORMALISED by the warping path length.
+
+    The accumulated cost D(N, M) grows mechanically with sequence length,
+    which biases k-NN when sequences differ in duration. We therefore
+    return D(N, M) / L, where L is the length of the optimal warping path
+    recovered by backtracking from (N, M) to (1, 1).
+    """
     n, m = len(seq1), len(seq2)
     dtw = np.full((n+1, m+1), np.inf)
     dtw[0, 0] = 0.0
 
+    # Forward pass — accumulate costs
     for i in range(1, n+1):
         for j in range(1, m+1):
-            # Using Euclidean distance manually inside for Numba compatibility
             dist = 0.0
             for k in range(len(seq1[i-1])):
                 dist += (seq1[i-1][k] - seq2[j-1][k])**2
             cost = np.sqrt(dist)
-
             dtw[i, j] = cost + min(dtw[i-1, j], dtw[i, j-1], dtw[i-1, j-1])
-    return dtw[n, m]
+
+    # Backward pass — count the length of the optimal warping path
+    i, j = n, m
+    path_len = 1
+    while i > 1 or j > 1:
+        if i == 1:
+            j -= 1
+        elif j == 1:
+            i -= 1
+        else:
+            a = dtw[i-1, j-1]
+            b = dtw[i-1, j]
+            c = dtw[i, j-1]
+            if a <= b and a <= c:
+                i -= 1
+                j -= 1
+            elif b <= c:
+                i -= 1
+            else:
+                j -= 1
+        path_len += 1
+
+    return dtw[n, m] / path_len
 
 
 

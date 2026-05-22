@@ -52,8 +52,18 @@ $W$ must satisfy three standard constraints~\cite{Rabiner1993}:
     that no observation is skipped.
 \end{itemize}
 
-The final similarity score $D(N, M)$ is then plugged into a $k$-nearest-neighbors classifier: the
-test gesture is assigned the majority label among its $k$ closest templates.
+The accumulated cost $D(N, M)$ grows mechanically with the duration of the
+sequences being compared, which can bias a nearest-neighbour classifier when
+gestures differ in length. We therefore normalise $D(N, M)$ by the length $L$
+of the optimal warping path, recovered via backtracking from $(N, M)$ to $(1, 1)$:
+\begin{equation}
+\label{eq:dtw-norm}
+    D_{\text{norm}}(N, M) = \frac{D(N, M)}{L} .
+\end{equation}
+
+The final similarity score $D_{\text{norm}}(N, M)$ is then plugged into a
+$k$-nearest-neighbors classifier: the test gesture is assigned the majority
+label among its $k$ closest templates.
 
 % ----------------------------------------------------------------
 \subsection{Edit-distance on quantized sequences}
