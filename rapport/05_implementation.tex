@@ -24,7 +24,7 @@ gesture points, and then applied uniformly to both training and test sets:
 This removes scale and location artifacts, ensuring that all methods operate on
 gesture trajectories with zero mean and unit variance.
  
-\paragraph{Dimensionality reduction (optional).} To assess the effect of
+\paragraph{Dimensionality reduction.} To assess the effect of
 dimensionality reduction, we optionally applied Principal Component Analysis
 (PCA) to the training set before classification. PCA was fit only on the
 training data and the resulting transformation was applied to both training and
@@ -50,7 +50,7 @@ natively without modification.
  
 The Edit-distance baseline requires discrete symbolic sequences rather than
 continuous coordinates. We converted each trajectory into a sequence of cluster
-labels using $k$-means clustering, following the project guidelines.
+labels using $k$-means clustering.
  
 \paragraph{Clustering procedure.} For each fold, $k$-means clustering was fit on
 all training gesture points (pooled across all gestures and users) with a fixed
@@ -180,3 +180,13 @@ correct predictions:
 \end{equation}
 For each configuration, we report mean accuracy and standard deviation across
 the 10 cross-validation folds.
+
+% ----------------------------------------------------------------
+\subsection{Ablation study}
+% ----------------------------------------------------------------
+ 
+To understand the individual contribution of each preprocessing decision to final classifier performance, we conduct a systematic ablation study. In this work, two preprocessing choices are non-trivial and methodologically independent: z-score normalization (Section~4.1) and dimensionality reduction via PCA ($n_{\text{components}} \in \{2, 3\}$ or none). Rather than reporting results only for the best-performing configuration found by grid search, the ablation study evaluates all combinations of these two choices across all four classifiers, both domains, and both cross-validation protocols (80 configurations in total).
+
+This serves three purposes. First, it allows us to assess whether the performance gains reported in Section 5.3 are genuinely driven by the chosen preprocessing or whether they would hold under alternative settings. Second, it reveals interactions between preprocessing steps that a single best-configuration table would obscure. For instance, whether PCA is beneficial in isolation or only when preceded by normalization. Third, it provides a diagnostic on the robustness of each method: a classifier whose accuracy varies widely across preprocessing choices is more sensitive to implementation decisions and harder to deploy reliably, whereas a classifier that performs consistently across configurations can be trusted without extensive tuning.
+
+

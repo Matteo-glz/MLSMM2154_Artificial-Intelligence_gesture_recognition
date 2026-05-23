@@ -14,11 +14,13 @@ PATH_DOMAIN_4 = "/Users/matteogalizia/Documents/GitHub/MLSMM2154_Artificial-Inte
 
 K_OPTIONS             = [1, 3, 5, 7]
 PCA_OPTIONS           = ["no_pca", 2, 3]
+W_OPTIONS             = [None, 10, 20]           # DTW: None=unconstrained, int=Sakoe-Chiba half-band
 CLUSTER_OPTIONS       = [15, 20, 25, 30, 35, 40]#, 45, 50, 55, 60] # for edit-distance method
 COMPRESSION           = [True, False] #  for edit-distance method
 N_POINTS_OPTIONS      = [16, 32, 64], #128, 256] # for three-centroid method
 TARGET_LENGTH_OPTIONS = [16, 32, 64]#, 128]
 N_UNITS_OPTIONS       = [16, 32, 64]#, 128]
+DROPOUT_OPTIONS       = [0.1, 0.2, 0.3, 0.5]    # BiLSTM: Srivastava et al. 2014
 CV_MODES              = ["dependent", "independent"]
 
 
@@ -48,7 +50,7 @@ if __name__ == "__main__":
         ),
         (
             "dtw",
-            lambda g, cv: pipeline_dtw.run_pipeline(g, K_OPTIONS, PCA_OPTIONS, cv),
+            lambda g, cv: pipeline_dtw.run_pipeline(g, K_OPTIONS, PCA_OPTIONS, W_OPTIONS, cv),
             pipeline_dtw.GROUP_COLS,
         ),
         (
@@ -60,7 +62,7 @@ if __name__ == "__main__":
         (
             "bilstm",
             lambda g, cv: pipeline_bilstm.run_pipeline(
-                g, TARGET_LENGTH_OPTIONS, N_UNITS_OPTIONS, cv),
+                g, TARGET_LENGTH_OPTIONS, N_UNITS_OPTIONS, DROPOUT_OPTIONS, cv),
             pipeline_bilstm.GROUP_COLS,
         ),
     ]
