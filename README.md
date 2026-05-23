@@ -86,7 +86,7 @@ The pipeline is modular — every preprocessing and evaluation step is reusable 
 
 ```
 Raw trajectories → Normalisation → [Optional PCA]
-  → Dynamic Time Warping distance + k-NN → prediction
+  → Dynamic Time Warping distance (optional Sakoe-Chiba window) + k-NN → prediction
 ```
 
 ### Edit Distance
@@ -95,8 +95,10 @@ Raw trajectories → Normalisation → [Optional PCA]
 Raw trajectories → Normalisation → [Optional PCA]
   → K-Means clustering → symbolic sequences ("AAABBBCCA…")
   → [Optional compression] (remove consecutive duplicates → "ABCA")
-  → Levenshtein edit distance + k-NN → prediction
+  → Levenshtein edit distance (normalised by max sequence length) + k-NN → prediction
 ```
+
+> Edit distance is divided by `max(len(s1), len(s2))` so the metric falls in `[0, 1]` and is comparable across gesture pairs of different symbolic length.
 
 ### 3-Cent (3D)
 
@@ -113,9 +115,11 @@ Raw trajectories → Normalisation → [Optional PCA]
 
 ```
 Raw trajectories → Normalisation
-  → Resample to fixed length → Bidirectional LSTM
+  → Resample to fixed length → Bidirectional LSTM (input dropout)
   → BatchNorm → Dropout → Dense → softmax → prediction
 ```
+
+> Dropout rate is now a tunable hyperparameter (Srivastava et al. 2014) and is swept alongside sequence length and hidden units during HP selection.
 
 ---
 
@@ -195,8 +199,10 @@ python viz/viz_mds.py                        # MDS embedding of trajectories
 | `n_clusters` (K-Means) | 15, 20, 25, 30, 35, 40 | — | — | — |
 | `compression` | True / False | — | — | — |
 | `n_components` (PCA) | no\_pca, 2, 3 | no\_pca, 2, 3 | no\_pca, 2, 3 | — |
+| `w` (Sakoe-Chiba window) | — | None, 10, 20 | — | — |
 | `n_points` (resample) | — | — | 16, 32, 64 | 16, 32, 64 |
 | `n_units` (hidden size) | — | — | — | 16, 32, 64 |
+| `dropout_rate` | — | — | — | 0.1, 0.2, 0.3, 0.5 |
 
 All combinations are evaluated under **user-dependent** and **user-independent** CV on both **Domain 1** and **Domain 4**.
 
@@ -259,12 +265,12 @@ Best test accuracy (mean ± std across 10 folds) using the best hyperparameter c
 
 | Method | Domain 1 indep. | Domain 1 dep. | Domain 4 indep. | Domain 4 dep. |
 |---|---|---|---|---|
-| DTW | 82.6 ± 12.4 % | 99.6 ± 0.5 % | 74.4 ± 11.2 % | 99.5 ± 1.0 % |
-| Edit-distance | 67.9 ± 23.1 % | 99.1 ± 0.7 % | 60.2 ± 19.5 % | 98.3 ± 1.4 % |
-| **Three-Cents** | **96.3 ± 4.6 %** | **99.8 ± 0.4 %** | **95.1 ± 5.3 %** | **98.6 ± 1.3 %** |
-| BiLSTM | 85.0 ± 12.7 % | 97.2 ± 2.2 % | 70.1 ± 8.2 % | 88.5 ± 3.2 % |
+| DTW | 82.7 ± 14.6 % | 99.5 ± 0.5 % | 72.6 ± 13.4 % | **99.1 ± 1.3 %** |
+| Edit-distance | 74.6 ± 20.9 % | 98.6 ± 1.0 % | 66.2 ± 13.5 % | 98.3 ± 1.5 % |
+| **Three-Cents** | **96.3 ± 4.6 %** | **99.8 ± 0.4 %** | **95.1 ± 5.3 %** | 98.6 ± 1.3 % |
+| BiLSTM | 85.7 ± 11.7 % | 96.0 ± 3.4 % | 73.7 ± 9.8 % | 87.9 ± 6.1 % |
 
-Three-Cents is the only method statistically superior to all others in the user-independent setting (Friedman test, $p < 0.001$; Nemenyi and Wilcoxon–Holm post-hoc, $\alpha = 0.05$).
+Three-Cents is the only method statistically superior to all others in the user-independent setting (Friedman test, $p < 0.001$; Nemenyi and Wilcoxon–Holm post-hoc, $\alpha = 0.05$). Edit-distance results improved after normalising the Levenshtein distance by sequence length.
 
 ---
 
