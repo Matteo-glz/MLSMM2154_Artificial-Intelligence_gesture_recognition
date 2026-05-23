@@ -55,7 +55,7 @@ from data.data_splitting import user_dependent_cv, user_independent_cv, inner_va
 from data.data_preparation import fit_normalizer, apply_normalizer
 from utils.utils_saving import save_results
 
-GROUP_COLS = ["target_length", "n_units"]
+GROUP_COLS = ["target_length", "n_units", "dropout_rate"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -119,10 +119,11 @@ def build_bilstm_model(input_shape: tuple, n_classes: int,
     Compiled keras.Sequential model
     """
     model = Sequential([
-        Bidirectional(LSTM(n_units, return_sequences=False),
+        # dropout= applies to LSTM input connections (Srivastava et al. 2014)
+        Bidirectional(LSTM(n_units, dropout=dropout_rate, return_sequences=False),
                       input_shape=input_shape),
         BatchNormalization(),
-        Dropout(dropout_rate),
+        Dropout(dropout_rate),  # post-LSTM dropout (Srivastava et al. 2014)
         Dense(32, activation="relu"),
         Dense(n_classes, activation="softmax"),
     ], name=f"BiLSTM_{n_units}u")
@@ -155,14 +156,14 @@ def _build_tensors(gestures: list, target_length: int,
 # Pipeline
 # ─────────────────────────────────────────────────────────────────────────────
 
-def run_pipeline(gestures, target_length_options, n_units_options,
-                 cv_mode="dependent", epochs=50, batch_size=16,
-                 dropout_rate=0.3, val_fraction=0.20):
+def run_pipeline(gestures, target_length_options, n_units_options, dropout_options,
+                 cv_mode="dependent", epochs=50, batch_size=16, val_fraction=0.20):
     """
     Two-phase cross-validated BiLSTM experiment.
 
     Phase 1 — HP selection GLOBALE (inner val sur tous les folds)
-        Best HP = (target_length, n_units) avec la meilleure moyenne sur tous les folds.
+        Best HP = (target_length, n_units, dropout_rate) avec la meilleure moyenne.
+        dropout_options grid swept alongside T and h (Srivastava et al. 2014).
 
     Phase 2 — Final evaluation avec le best_hp FIXE sur tous les folds.
     """
@@ -184,31 +185,33 @@ def run_pipeline(gestures, target_length_options, n_units_options,
             X_iv, y_iv, Y_iv = _build_tensors(inner_val,   target_length, n_classes, label_offset)
 
             for n_units in n_units_options:
-                tf.keras.backend.clear_session()
-                model = build_bilstm_model(
-                    input_shape  = (target_length, X_it.shape[2]),
-                    n_classes    = n_classes,
-                    n_units      = n_units,
-                    dropout_rate = dropout_rate,
-                )
-                model.fit(
-                    X_it, Y_it,
-                    epochs          = epochs,
-                    batch_size      = batch_size,
-                    validation_data = (X_iv, Y_iv),
-                    callbacks       = [EarlyStopping(monitor="val_loss", patience=5,
-                                                     restore_best_weights=True, verbose=0)],
-                    verbose         = 0,
-                )
-                val_acc = float(np.mean(
-                    np.argmax(model.predict(X_iv, verbose=0), axis=1) == y_iv))
-                hp_scores[(target_length, n_units)].append(val_acc)
+                for dropout_rate in dropout_options:  # Srivastava et al. 2014
+                    tf.keras.backend.clear_session()
+                    model = build_bilstm_model(
+                        input_shape  = (target_length, X_it.shape[2]),
+                        n_classes    = n_classes,
+                        n_units      = n_units,
+                        dropout_rate = dropout_rate,
+                    )
+                    model.fit(
+                        X_it, Y_it,
+                        epochs          = epochs,
+                        batch_size      = batch_size,
+                        validation_data = (X_iv, Y_iv),
+                        callbacks       = [EarlyStopping(monitor="val_loss", patience=5,
+                                                         restore_best_weights=True, verbose=0)],
+                        verbose         = 0,
+                    )
+                    val_acc = float(np.mean(
+                        np.argmax(model.predict(X_iv, verbose=0), axis=1) == y_iv))
+                    hp_scores[(target_length, n_units, dropout_rate)].append(val_acc)
 
     # ← EN DEHORS de la boucle
     best_hp = max(hp_scores, key=lambda hp: np.mean(hp_scores[hp]))
     best_val_acc_global = float(np.mean(hp_scores[best_hp]))
-    best_target_length, best_n_units = best_hp
-    print(f"  Global best HP: target_length={best_target_length}, n_units={best_n_units}")
+    best_target_length, best_n_units, best_dropout = best_hp
+    print(f"  Global best HP: target_length={best_target_length}, "
+          f"n_units={best_n_units}, dropout={best_dropout}")
 
     # ── PHASE 2 : Evaluation finale avec best_hp FIXE ────────────────
     all_results        = []
@@ -228,7 +231,7 @@ def run_pipeline(gestures, target_length_options, n_units_options,
             input_shape  = (best_target_length, x_train.shape[2]),
             n_classes    = n_classes,
             n_units      = best_n_units,
-            dropout_rate = dropout_rate,
+            dropout_rate = best_dropout,
         )
         model.fit(
             x_train, y_train,
@@ -250,7 +253,8 @@ def run_pipeline(gestures, target_length_options, n_units_options,
             "fold_id":       fold_id,
             "target_length": best_target_length,
             "n_units":       best_n_units,
-            "val_accuracy":   best_val_acc_global,
+            "dropout_rate":  best_dropout,
+            "val_accuracy":  best_val_acc_global,
             "accuracy":      accuracy,
         })
         print(f"    Test accuracy = {accuracy:.4f}")
@@ -259,8 +263,8 @@ def run_pipeline(gestures, target_length_options, n_units_options,
 
 
 if __name__ == "__main__":
-    PATH_DOMAIN_1 = "/Users/matteogalizia/Documents/GitHub/MLSMM2154_Artificial-Intelligence_gesture_recognition/GestureData/GestureDataDomain1_Mons/Domain1_csv"
-    PATH_DOMAIN_4 = "/Users/matteogalizia/Documents/GitHub/MLSMM2154_Artificial-Intelligence_gesture_recognition/GestureData/GestureDataDomain4_Mons"
+    PATH_DOMAIN_1 = "/Users/simoensm/Documents/GitHub/MLSMM2154_Artificial-Intelligence_gesture_recognition/GestureData_Mons/GestureDataDomain1_Mons/Domain1_csv"
+    PATH_DOMAIN_4 = "/Users/simoensm/Documents/GitHub/MLSMM2154_Artificial-Intelligence_gesture_recognition/GestureData_Mons/GestureDataDomain4_Mons"
 
     datasets = {
         "domain1": load_data_domain_1(PATH_DOMAIN_1),
@@ -268,6 +272,7 @@ if __name__ == "__main__":
     }
     target_length_options = [16, 32, 64]#, 128]
     n_units_options       = [16, 32, 64]#, 128]
+    dropout_options       = [0.1, 0.2, 0.3, 0.5]  # Srivastava et al. 2014
     cv_modes              = ["dependent", "independent"]
 
     for domain_name, gestures in datasets.items():
@@ -277,7 +282,7 @@ if __name__ == "__main__":
             print(f"\nRunning: {config_label}")
 
             df, preds, best_config = run_pipeline(
-                gestures, target_length_options, n_units_options, cv_mode
+                gestures, target_length_options, n_units_options, dropout_options, cv_mode
             )
 
             mean_acc = df["accuracy"].mean()
@@ -289,7 +294,7 @@ if __name__ == "__main__":
             y_true = preds["y_true"]
             y_pred = preds["y_pred"]
             cm = confusion_matrix(y_true, y_pred, labels=labels)
-            summary = df.groupby(["target_length", "n_units"])["accuracy"].agg(["mean", "std"])
+            summary = df.groupby(["target_length", "n_units", "dropout_rate"])["accuracy"].agg(["mean", "std"])
             print(f"  Val accuracy   : {df['val_accuracy'].mean():.4f}")
             print(f"  Test accuracy  : {df['accuracy'].mean():.4f} ± {df['accuracy'].std():.4f}")
             save_results(summary, best_config, cm, df, config_label, output_dir="results")
