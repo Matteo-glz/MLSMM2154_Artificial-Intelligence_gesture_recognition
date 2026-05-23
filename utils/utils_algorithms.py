@@ -157,12 +157,21 @@ def _edit_distance_core(s1, s2):
         
     return prev_row[m]
 
-# 2. La "Façade" (Wrapper) : C'est la fonction que tu appelles.
-# Elle respecte ta contrainte : elle prend des chaînes de caractères (str).
 def edit_distance_fast(str1, str2):
-    # Conversion ultra-rapide de str vers array d'entiers (ASCII)
-    # On utilise .encode() pour passer en bytes, puis np.frombuffer
+    """
+    Levenshtein distance NORMALISED by max(len(s1), len(s2)).
+
+    Without normalisation, longer symbolic sequences mechanically have
+    larger edit distances, even when their underlying gestures are
+    similar in shape. Dividing by the maximum length yields a distance
+    in [0, 1] that is comparable across gesture pairs of different
+    symbolic length.
+    """
     s1_arr = np.frombuffer(str1.encode('ascii'), dtype=np.uint8)
     s2_arr = np.frombuffer(str2.encode('ascii'), dtype=np.uint8)
-    
-    return _edit_distance_core(s1_arr, s2_arr)
+
+    raw_dist = _edit_distance_core(s1_arr, s2_arr)
+    max_len  = max(len(str1), len(str2))
+    if max_len == 0:
+        return 0.0
+    return raw_dist / max_len
