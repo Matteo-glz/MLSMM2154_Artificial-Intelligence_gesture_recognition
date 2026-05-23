@@ -99,10 +99,26 @@ the first $j$ symbols of $S_2$. Then:
     \end{cases}
 \end{equation}
 where $c(i, j) = 0$ if $S_1[i] = S_2[j]$, and $c(i, j) = 1$ otherwise. The
-final value $D(|S_1|, |S_2|)$ gives the edit distance between the two complete
-sequences. Classification is performed with a $k$-nearest-neighbors rule,
-assigning each test gesture the label of its $k$ nearest templates in the
-edit-distance metric.
+final value $D(|S_1|, |S_2|)$ gives the (unnormalised) edit distance between
+the two complete sequences.
+
+\paragraph{Length normalisation.} As with DTW, the raw edit distance
+grows mechanically with the length of the symbolic sequences being compared,
+which can bias the nearest-neighbour classifier when sequences differ in
+length --- in particular when the optional consecutive-duplicate compression
+step is applied, since it shortens sequences by a variable amount. We
+therefore normalise the edit distance by the length of the longer sequence:
+\begin{equation}
+\label{eq:ed-norm}
+    d_{\text{norm}}(S_1, S_2) =
+    \frac{D(|S_1|, |S_2|)}{\max(|S_1|, |S_2|)} \in [0, 1] .
+\end{equation}
+The normalised distance lies in $[0, 1]$, where $0$ indicates identical
+sequences and $1$ indicates that every symbol must be edited.
+
+Classification is then performed with a $k$-nearest-neighbours rule, assigning
+each test gesture the majority label among its $k$ nearest templates in the
+$d_{\text{norm}}$ metric.
 
 
 % ----------------------------------------------------------------
