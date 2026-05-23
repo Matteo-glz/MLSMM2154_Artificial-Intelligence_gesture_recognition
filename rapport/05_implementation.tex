@@ -123,12 +123,12 @@ each method:
     $n_{\text{components}} \in \{\text{no PCA}, 2, 3\}$.
 
     \item \textbf{BiLSTM:} the number of resampled time steps
-    $T \in \{16, 32, 64\}$ and the number of hidden units per
-    direction $h \in \{16, 32, 64\}$ were tuned by grid search.
+    $T \in \{16, 32, 64\}$, the number of hidden units per direction
+    $h \in \{16, 32, 64\}$, and the dropout rate
+    $p \in \{0.1, 0.2, 0.3, 0.5\}$ were tuned jointly by grid search.
     The following architectural parameters were fixed throughout:
-    dropout rate $p = 0.30$, batch size $= 16$, maximum epochs
-    $= 50$ with early stopping (patience $= 5$, monitoring
-    validation loss). No PCA was applied.
+    batch size $= 16$, maximum epochs $= 50$ with early stopping
+    (patience $= 5$, monitoring validation loss). No PCA was applied.
 \end{itemize}
 
 For each outer fold, we computed inner-validation accuracy for all

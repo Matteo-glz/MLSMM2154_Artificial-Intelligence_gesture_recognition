@@ -9,8 +9,8 @@ from pipelines import pipeline_three_cent
 from pipelines import pipeline_bilstm
 
 
-PATH_DOMAIN_1 = "/Users/matteogalizia/Documents/GitHub/MLSMM2154_Artificial-Intelligence_gesture_recognition/GestureData/GestureDataDomain1_Mons/Domain1_csv"
-PATH_DOMAIN_4 = "/Users/matteogalizia/Documents/GitHub/MLSMM2154_Artificial-Intelligence_gesture_recognition/GestureData/GestureDataDomain4_Mons"
+PATH_DOMAIN_1 = "/Users/simoensm/Documents/GitHub/MLSMM2154_Artificial-Intelligence_gesture_recognition/GestureData_Mons/GestureDataDomain1_Mons/Domain1_csv"
+PATH_DOMAIN_4 = "/Users/simoensm/Documents/GitHub/MLSMM2154_Artificial-Intelligence_gesture_recognition/GestureData_Mons/GestureDataDomain4_Mons"
 
 K_OPTIONS             = [1, 3, 5, 7]
 PCA_OPTIONS           = ["no_pca", 2, 3]
@@ -36,29 +36,29 @@ def _save_best(df, preds, group_cols, config_label, labels):
 
 if __name__ == "__main__":
     datasets = {
-        "domain1": load_data_domain_1(PATH_DOMAIN_1),
-        #"domain4": load_data_domain_4(PATH_DOMAIN_4),
+        #"domain1": load_data_domain_1(PATH_DOMAIN_1),
+        "domain4": load_data_domain_4(PATH_DOMAIN_4),
     }
 
     # Each entry: (method name, pipeline runner, group columns for summary)
     method_runners = [
-        (
-            "edit-distance",
-            lambda g, cv: pipeline_edit_distance.run_pipeline(
-                g, K_OPTIONS, PCA_OPTIONS, CLUSTER_OPTIONS, COMPRESSION, cv),
-            pipeline_edit_distance.GROUP_COLS,
-        ),
-        (
-            "dtw",
-            lambda g, cv: pipeline_dtw.run_pipeline(g, K_OPTIONS, PCA_OPTIONS, W_OPTIONS, cv),
-            pipeline_dtw.GROUP_COLS,
-        ),
-        (
-            "three-cent",
-            lambda g, cv: pipeline_three_cent.run_pipeline(
-                g, PCA_OPTIONS, N_POINTS_OPTIONS, cv),
-            pipeline_three_cent.GROUP_COLS,
-        ),
+       # (
+        #    "edit-distance",
+        #    lambda g, cv: pipeline_edit_distance.run_pipeline(
+        #        g, K_OPTIONS, PCA_OPTIONS, CLUSTER_OPTIONS, COMPRESSION, cv),
+       #     pipeline_edit_distance.GROUP_COLS,
+       # ),
+       # (
+       #     "dtw",
+       #     lambda g, cv: pipeline_dtw.run_pipeline(g, K_OPTIONS, PCA_OPTIONS, W_OPTIONS, cv),
+       #     pipeline_dtw.GROUP_COLS,
+      #  ),
+       # (
+        #    "three-cent",
+         #   lambda g, cv: pipeline_three_cent.run_pipeline(
+          #      g, PCA_OPTIONS, N_POINTS_OPTIONS, cv),
+          #  pipeline_three_cent.GROUP_COLS,
+        #),
         (
             "bilstm",
             lambda g, cv: pipeline_bilstm.run_pipeline(

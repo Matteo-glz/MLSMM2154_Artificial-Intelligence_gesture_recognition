@@ -45,7 +45,7 @@ import pandas as pd
 from sklearn.metrics import confusion_matrix
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import (Bidirectional, LSTM, Dense, Dropout,
+from tensorflow.keras.layers import (Input, Bidirectional, LSTM, Dense, Dropout,
                                      BatchNormalization)
 from tensorflow.keras.utils import to_categorical
 from tensorflow.keras.callbacks import EarlyStopping
@@ -94,7 +94,7 @@ def resample_trajectory(traj: np.ndarray, target_length: int) -> np.ndarray:
 # Model definition
 # ─────────────────────────────────────────────────────────────────────────────
 
-def build_bilstm_model(input_shape: tuple, n_classes: int,
+def build_bilstm_model(input_shape:tuple, n_classes: int,
                        n_units: int = 64,
                        dropout_rate: float = 0.3) -> Sequential:
     """
@@ -119,9 +119,10 @@ def build_bilstm_model(input_shape: tuple, n_classes: int,
     Compiled keras.Sequential model
     """
     model = Sequential([
+        # Explicit Input layer — modern Keras pattern, avoids input_shape= warning
+        Input(shape=input_shape),
         # dropout= applies to LSTM input connections (Srivastava et al. 2014)
-        Bidirectional(LSTM(n_units, dropout=dropout_rate, return_sequences=False),
-                      input_shape=input_shape),
+        Bidirectional(LSTM(n_units, dropout=dropout_rate, return_sequences=False)),
         BatchNormalization(),
         Dropout(dropout_rate),  # post-LSTM dropout (Srivastava et al. 2014)
         Dense(32, activation="relu"),
@@ -202,8 +203,10 @@ def run_pipeline(gestures, target_length_options, n_units_options, dropout_optio
                                                          restore_best_weights=True, verbose=0)],
                         verbose         = 0,
                     )
+                    # model(X, training=False) avoids the predict() @tf.function
+                    # retracing warning that fires when clear_session() is called in a loop
                     val_acc = float(np.mean(
-                        np.argmax(model.predict(X_iv, verbose=0), axis=1) == y_iv))
+                        np.argmax(model(X_iv, training=False).numpy(), axis=1) == y_iv))
                     hp_scores[(target_length, n_units, dropout_rate)].append(val_acc)
 
     # ← EN DEHORS de la boucle
@@ -243,7 +246,7 @@ def run_pipeline(gestures, target_length_options, n_units_options, dropout_optio
             verbose          = 0,
         )
 
-        y_pred_original = np.argmax(model.predict(x_test, verbose=0), axis=1) + label_offset
+        y_pred_original = np.argmax(model(x_test, training=False).numpy(), axis=1) + label_offset
         y_test_original = y_test + label_offset
         
         accuracy = float(np.mean(y_pred_original == y_test_original))

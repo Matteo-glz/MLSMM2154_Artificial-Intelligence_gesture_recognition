@@ -11,7 +11,7 @@ Contrary to the common expectation that neural or more elaborate methods
 should dominate, the Three-Cents recognizer~\cite{Caputo2018}, a lightweight
 resample--scale--translate template matcher, achieves the highest
 user-independent accuracy on both domains ($96.3\%$ on domain~1,
-$95.1\%$ on domain~4), outperforming the BiLSTM by a margin of $11$--$25$
+$95.1\%$ on domain~4), outperforming the BiLSTM by a margin of $11$--$21$
 percentage points. This result highlights that the inductive bias of
 the method matters more than its computational complexity: Three-Cents
 implicitly encodes the relevant invariances (translation, scale, partial
@@ -24,7 +24,7 @@ user-independent regime.
 \paragraph{Q2 : User-independent vs.\ user-dependent accuracy.}
 The user-dependent setting yields systematically higher accuracy for every
 method and every domain, as expected. The gap is most pronounced for
-template-based methods: DTW and Edit-distance improve by up to $38$ percentage
+template-based methods: DTW and Edit-distance improve by up to $32$ percentage
 points in the user-dependent regime, where training and test gestures share
 the same motor style. Three-Cents and, to a lesser extent, the BiLSTM are
 more robust to user shift: their user-dependent gains are smaller precisely
